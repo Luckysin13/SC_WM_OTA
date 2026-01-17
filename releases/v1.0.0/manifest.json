@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "timestamp": "2026-01-16T18:30:00Z",
+  "description": "Initial OTA release - Smoker Controller with Time-to-Done Prediction",
+  "firmware": {
+    "file": "firmware.bin",
+    "size": 995328,
+    "checksum": ""
+  },
+  "filesystem": {
+    "file": "spiffs.bin",
+    "size": 1441792,
+    "checksum": ""
+  },
+  "features": [
+    "Lid Open Detection",
+    "PID Autotuning",
+    "Ramp-to-Done (Keep Warm)",
+    "Predictive Time-to-Done"
+  ],
+  "changelog": "Initial release with core features including temperature control, PID autotuning, and predictive time estimation for meat doneness.",
+  "minimum_hardware": "ESP32-WROOM-32D",
+  "compatibility": "SC_WM Smoker Controller"
+}
