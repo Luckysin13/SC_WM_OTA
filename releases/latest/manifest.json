@@ -1,6 +1,6 @@
 {
-  "version": "1.0.29",
-  "description": "Release 1.0.29",
+  "version": "1.0.30",
+  "description": "Release 1.0.30 - Fixed firmware signing for OTA",
   "firmware": "firmware.bin",
   "spiffs": "spiffs.bin"
 }
