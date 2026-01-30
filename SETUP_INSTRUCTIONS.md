@@ -49,7 +49,7 @@ GitHub no longer supports password authentication for git operations. You need a
 5. Click "Generate token"
 6. **Copy the token immediately** (you won't see it again!)
 
-Example token format: `ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+Example token format: `ghp_XXXX_EXAMPLE_TOKEN_XXXX`
 
 ## Step 2: Push Repository to GitHub
 

@@ -1,6 +1,1 @@
-{
-  "version": "1.0.25",
-  "description": "Release 1.0.25",
-  "firmware": "firmware.bin",
-  "spiffs": "spiffs.bin"
-}
+{"version": "1.0.25", "firmware": "firmware.bin", "spiffs": "spiffs.bin"}
