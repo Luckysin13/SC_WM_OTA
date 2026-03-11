@@ -118,20 +118,3 @@ git diff --cached --quiet || git commit -m "Release v$VERSION (signed firmware+L
 git pull --rebase --autostash origin main
 git push origin main
 ```
-
-Alternative (token via env var):
-
-```bash
-: "${OTA_REPO_DIR:=$HOME/Documents/SC_WM_OTA}"
-test -d "$OTA_REPO_DIR/.git" || { echo "Invalid OTA_REPO_DIR: $OTA_REPO_DIR"; exit 1; }
-cd "$OTA_REPO_DIR"
-
-# Export in your shell (don’t paste into scripts/docs):
-# export GITHUB_TOKEN="..."
-
-git remote set-url origin https://github.com/Luckysin13/SC_WM_OTA.git
-git add -A
-git diff --cached --quiet || git commit -m "Release v$VERSION (signed firmware+LittleFS)"
-git pull --rebase --autostash origin main
-git push "https://x-access-token:${GITHUB_TOKEN}@github.com/Luckysin13/SC_WM_OTA.git" main
-```
