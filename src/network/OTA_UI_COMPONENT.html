@@ -1,0 +1,304 @@
+<!-- OTA UPDATE SECTION for configuration.html -->
+<!-- Copy this section into configuration.html under the appropriate tab/section -->
+
+<div id="otaSection" style="display: none;">
+    <h3 style="margin-top: 30px; margin-bottom: 20px; color: #2dd4bf;">
+        📦 Firmware Updates (OTA)
+    </h3>
+
+    <!-- Update Status Card -->
+    <div class="config-box" style="background: rgba(45, 212, 191, 0.05); border-color: rgba(45, 212, 191, 0.2);">
+        <div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
+            <!-- Status Display -->
+            <div style="flex: 1;">
+                <h4 style="margin: 0 0 15px 0; color: #2dd4bf;">Current Status</h4>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <!-- Current Version -->
+                    <div>
+                        <label style="font-size: 0.9em; color: #94a3b8; display: block; margin-bottom: 5px;">
+                            Current Version
+                        </label>
+                        <p id="currentVersionDisplay" style="margin: 0; font-size: 1.2em; color: #f1f5f9; font-weight: bold;">
+                            --
+                        </p>
+                    </div>
+
+                    <!-- Available Version -->
+                    <div>
+                        <label style="font-size: 0.9em; color: #94a3b8; display: block; margin-bottom: 5px;">
+                            Available Version
+                        </label>
+                        <p id="availableVersionDisplay" style="margin: 0; font-size: 1.2em; color: #f1f5f9; font-weight: bold;">
+                            --
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Status Message -->
+                <div style="padding: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; margin-bottom: 15px;">
+                    <p id="otaStatusMessage" style="margin: 0; color: #cbd5e1; font-size: 0.95em;">
+                        Click "Check for Updates" to get started
+                    </p>
+                </div>
+
+                <!-- Progress Bar (Hidden until update starts) -->
+                <div id="otaProgressContainer" style="display: none; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 0.9em; color: #cbd5e1;">Update Progress</span>
+                        <span id="otaProgressPercent" style="font-size: 0.9em; color: #2dd4bf; font-weight: bold;">0%</span>
+                    </div>
+                    <div style="width: 100%; height: 24px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden; border: 1px solid rgba(45, 212, 191, 0.3);">
+                        <div id="otaProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #2dd4bf, #14b8a6); transition: width 0.3s ease; display: flex; align-items: center; justify-content: center;">
+                            <span id="otaProgressText" style="color: #0f172a; font-size: 0.75em; font-weight: bold;"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="min-width: 200px;">
+                <button id="checkUpdatesBtn" class="save-btn" style="width: 100%; margin-bottom: 10px; padding: 12px 20px; font-size: 1em;">
+                    🔍 Check for Updates
+                </button>
+
+                <button id="updateBtn" class="save-btn" style="width: 100%; margin-bottom: 10px; padding: 12px 20px; font-size: 1em; display: none; background: linear-gradient(135deg, #10b981, #059669);" 
+                    onclick="confirmAndStartUpdate()">
+                    ⬇️ Download & Install
+                </button>
+
+                <button id="cancelUpdateBtn" class="save-btn" style="width: 100%; padding: 12px 20px; font-size: 1em; display: none; background: #ef4444;" 
+                    onclick="cancelOTAUpdate()">
+                    ⏹️ Cancel Update
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Details Card (shown when update available) -->
+    <div id="updateDetailsCard" class="config-box" style="display: none; margin-top: 20px; background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);">
+        <h4 style="margin: 0 0 15px 0; color: #10b981;">✅ Update Available!</h4>
+        
+        <div style="display: grid; gap: 12px; margin-bottom: 15px;">
+            <div>
+                <label style="font-size: 0.9em; color: #94a3b8;">Version:</label>
+                <p id="updateVersionText" style="margin: 5px 0 0 0; color: #f1f5f9;"></p>
+            </div>
+            
+            <div>
+                <label style="font-size: 0.9em; color: #94a3b8;">Description:</label>
+                <p id="updateDescriptionText" style="margin: 5px 0 0 0; color: #cbd5e1; font-size: 0.95em;"></p>
+            </div>
+
+            <div style="padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 4px;">
+                <p style="margin: 0; color: #93c5fd; font-size: 0.9em;">
+                    ℹ️ The update will download and install automatically. Your device will reboot when complete.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Troubleshooting Section -->
+    <div class="config-box" style="margin-top: 20px; background: rgba(107, 114, 128, 0.05); border-color: rgba(107, 114, 128, 0.2);">
+        <h4 style="margin: 0 0 15px 0; color: #9ca3af;">❓ Troubleshooting</h4>
+        
+        <details style="color: #cbd5e1;">
+            <summary style="cursor: pointer; color: #d1d5db; font-weight: 500; margin-bottom: 10px;">
+                Update Failed or Device Won't Start
+            </summary>
+            <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-top: 10px; font-size: 0.95em;">
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li>Check the error message above</li>
+                    <li>Ensure WiFi connection is stable</li>
+                    <li>Verify device has 50% free SPIFFS space</li>
+                    <li>If device won't boot, update via USB cable with PlatformIO</li>
+                    <li>Check serial console (115200 baud) for error details</li>
+                </ol>
+            </div>
+        </details>
+
+        <details style="color: #cbd5e1; margin-top: 10px;">
+            <summary style="cursor: pointer; color: #d1d5db; font-weight: 500; margin-bottom: 10px;">
+                Update Stuck or Frozen
+            </summary>
+            <div style="padding: 12px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-top: 10px; font-size: 0.95em;">
+                <ol style="margin: 0; padding-left: 20px;">
+                    <li>Click "Cancel Update" button</li>
+                    <li>Wait 5 seconds</li>
+                    <li>Refresh the page</li>
+                    <li>If still stuck, power cycle the device</li>
+                </ol>
+            </div>
+        </details>
+    </div>
+</div>
+
+<!-- JavaScript for OTA Updates -->
+<script>
+// OTA Update Management
+const OTA_CHECK_INTERVAL = 300000; // 5 minutes
+const OTA_CURRENT_VERSION = "1.0.0"; // Must match ota_updater.h
+
+let otaStatus = 'IDLE'; // IDLE, CHECKING, UPDATE_AVAILABLE, DOWNLOADING, INSTALLING, SUCCESS, FAILED
+let otaCheckTimeout = null;
+
+// Send OTA check request to device
+function checkForOTAUpdates() {
+    const btn = document.getElementById('checkUpdatesBtn');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Checking...';
+    
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send("checkOTAUpdates");
+        console.log('[OTA] Requested update check from device');
+    } else {
+        alert("WebSocket not connected. Cannot check for updates.");
+        btn.disabled = false;
+        btn.textContent = '🔍 Check for Updates';
+    }
+}
+
+// Confirm and start update
+function confirmAndStartUpdate() {
+    const available = document.getElementById('availableVersionDisplay')?.textContent || '--';
+    
+    if (confirm(`Update to version ${available}? The device will reboot automatically.\n\nEnsure a stable power supply.`)) {
+        const btn = document.getElementById('updateBtn');
+        btn.disabled = true;
+        btn.textContent = '⬇️ Starting Update...';
+        
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send("startOTAUpdate");
+            console.log('[OTA] Initiated firmware update');
+            
+            // Show progress
+            document.getElementById('otaProgressContainer').style.display = 'block';
+            document.getElementById('checkUpdatesBtn').style.display = 'none';
+            document.getElementById('updateBtn').style.display = 'none';
+            document.getElementById('cancelUpdateBtn').style.display = 'block';
+        }
+    }
+}
+
+// Cancel ongoing update
+function cancelOTAUpdate() {
+    if (confirm('Cancel the firmware update?')) {
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send("cancelOTAUpdate");
+            console.log('[OTA] Cancelled update');
+        }
+        
+        // Reset UI
+        document.getElementById('otaProgressContainer').style.display = 'none';
+        document.getElementById('checkUpdatesBtn').style.display = 'block';
+        document.getElementById('updateBtn').style.display = 'none';
+        document.getElementById('cancelUpdateBtn').style.display = 'none';
+        document.getElementById('checkUpdatesBtn').disabled = false;
+        document.getElementById('checkUpdatesBtn').textContent = '🔍 Check for Updates';
+    }
+}
+
+// Update OTA status from WebSocket data
+function updateOTAStatus(data) {
+    if (!data.otaStatus) return;
+
+    otaStatus = data.otaStatus;
+    const checkBtn = document.getElementById('checkUpdatesBtn');
+    const updateBtn = document.getElementById('updateBtn');
+    const cancelBtn = document.getElementById('cancelUpdateBtn');
+    const statusMsg = document.getElementById('otaStatusMessage');
+    const progressContainer = document.getElementById('otaProgressContainer');
+    const detailsCard = document.getElementById('updateDetailsCard');
+
+    console.log('[OTA] Status update:', otaStatus);
+
+    // Reset button states
+    if (checkBtn) {
+        checkBtn.disabled = false;
+        checkBtn.textContent = '🔍 Check for Updates';
+    }
+
+    switch(otaStatus) {
+        case 'CHECKING':
+            if (statusMsg) statusMsg.textContent = '🔄 Checking for updates...';
+            if (checkBtn) {
+                checkBtn.disabled = true;
+                checkBtn.textContent = '⏳ Checking...';
+            }
+            break;
+
+        case 'UPDATE_AVAILABLE':
+            if (statusMsg) statusMsg.textContent = '✅ Update available!';
+            if (data.availableVersion) {
+                document.getElementById('availableVersionDisplay').textContent = data.availableVersion;
+            }
+            if (updateBtn) updateBtn.style.display = 'block';
+            if (detailsCard) detailsCard.style.display = 'block';
+            if (data.description) {
+                document.getElementById('updateDescriptionText').textContent = data.description;
+            }
+            break;
+
+        case 'NO_UPDATE':
+            if (statusMsg) statusMsg.textContent = '✅ You\'re on the latest version!';
+            if (updateBtn) updateBtn.style.display = 'none';
+            if (detailsCard) detailsCard.style.display = 'none';
+            break;
+
+        case 'DOWNLOADING':
+        case 'INSTALLING':
+            if (statusMsg) statusMsg.textContent = `⬇️ ${otaStatus === 'DOWNLOADING' ? 'Downloading' : 'Installing'} firmware...`;
+            if (progressContainer) progressContainer.style.display = 'block';
+            if (updateBtn) updateBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'block';
+            break;
+
+        case 'SUCCESS':
+            if (statusMsg) statusMsg.textContent = '✅ Update successful! Device will reboot...';
+            if (progressContainer) {
+                progressContainer.style.display = 'block';
+                document.getElementById('otaProgressPercent').textContent = '100%';
+                document.getElementById('otaProgressBar').style.width = '100%';
+            }
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            // Prepare to reconnect after reboot
+            setTimeout(() => {
+                alert('Device is rebooting with new firmware. Reconnecting...');
+                location.reload();
+            }, 3000);
+            break;
+
+        case 'FAILED':
+            if (statusMsg) {
+                statusMsg.textContent = '❌ Update failed: ' + (data.error || 'Unknown error');
+                statusMsg.style.color = '#ef4444';
+            }
+            if (progressContainer) progressContainer.style.display = 'none';
+            if (checkBtn) checkBtn.style.display = 'block';
+            if (updateBtn) updateBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            break;
+    }
+
+    // Update progress if provided
+    if (data.progress !== undefined) {
+        document.getElementById('otaProgressPercent').textContent = data.progress + '%';
+        document.getElementById('otaProgressBar').style.width = data.progress + '%';
+        document.getElementById('otaProgressText').textContent = data.progress + '%';
+    }
+}
+
+// Initialize OTA section in WebSocket handler
+document.addEventListener('DOMContentLoaded', () => {
+    // Display current version
+    document.getElementById('currentVersionDisplay').textContent = OTA_CURRENT_VERSION;
+    
+    // Attach button handler
+    const checkBtn = document.getElementById('checkUpdatesBtn');
+    if (checkBtn) {
+        checkBtn.addEventListener('click', checkForOTAUpdates);
+    }
+});
+</script>

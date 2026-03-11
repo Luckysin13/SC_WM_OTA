@@ -51,7 +51,7 @@ Prereqs:
 ```bash
 # Run from the firmware repo root
 cd SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes
-VERSION="2.1.4"
+VERSION="2.1.5"
 
 sed -i -E 's/(CURRENT_VERSION[[:space:]]*=[[:space:]]*)"[^"]*"/\1"'"$VERSION"'"/' src/network/ota_updater.h
 sed -i -E 's/(PROJECT_VER[[:space:]]*)"[^"]*"/\1"'"$VERSION"'"/' CMakeLists.txt
@@ -84,7 +84,12 @@ PIO="$HOME/.platformio/penv/bin/pio"
 # Set this to wherever you cloned the OTA repo
 OTA_REPO_DIR="$HOME/Documents/SC_WM_OTA"
 
-VERSION=$(sed -n 's/.*CURRENT_VERSION[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src/network/ota_updater.h | head -n1)
+: "${VERSION:?Set VERSION in Step 1 first}"
+CODE_VERSION=$(sed -n 's/.*CURRENT_VERSION[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' src/network/ota_updater.h | head -n1)
+if [ "$VERSION" != "$CODE_VERSION" ]; then
+    echo "VERSION mismatch: Step1 VERSION=$VERSION, code CURRENT_VERSION=$CODE_VERSION"
+    exit 1
+fi
 
 mkdir -p "$OTA_REPO_DIR/releases/v$VERSION" "$OTA_REPO_DIR/releases/latest"
 
@@ -104,6 +109,8 @@ cp "$OTA_REPO_DIR/releases/v$VERSION/manifest.json" "$OTA_REPO_DIR/releases/late
 Recommended (SSH remote):
 
 ```bash
+: "${OTA_REPO_DIR:=$HOME/Documents/SC_WM_OTA}"
+test -d "$OTA_REPO_DIR/.git" || { echo "Invalid OTA_REPO_DIR: $OTA_REPO_DIR"; exit 1; }
 cd "$OTA_REPO_DIR"
 git remote set-url origin git@github.com:Luckysin13/SC_WM_OTA.git
 git add -A
@@ -115,6 +122,8 @@ git push origin main
 Alternative (token via env var):
 
 ```bash
+: "${OTA_REPO_DIR:=$HOME/Documents/SC_WM_OTA}"
+test -d "$OTA_REPO_DIR/.git" || { echo "Invalid OTA_REPO_DIR: $OTA_REPO_DIR"; exit 1; }
 cd "$OTA_REPO_DIR"
 
 # Export in your shell (don’t paste into scripts/docs):
