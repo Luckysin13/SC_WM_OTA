@@ -51,7 +51,7 @@ Prereqs:
 ```bash
 # Run from the firmware repo root
 cd SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes
-VERSION="2.1.5"
+VERSION="2.1.6"
 
 sed -i -E 's/(CURRENT_VERSION[[:space:]]*=[[:space:]]*)"[^"]*"/\1"'"$VERSION"'"/' src/network/ota_updater.h
 sed -i -E 's/(PROJECT_VER[[:space:]]*)"[^"]*"/\1"'"$VERSION"'"/' CMakeLists.txt
