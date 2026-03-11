@@ -31,7 +31,7 @@ public:
   };
 
   // Current firmware version (matches releases/latest/manifest.json)
-  static constexpr const char *CURRENT_VERSION = "2.1.6";
+  static constexpr const char *CURRENT_VERSION = "2.1.7";
   
     // GitHub OTA repository URLs (latest pointers)
     static constexpr const char *MANIFEST_URL =

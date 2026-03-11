@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smoker Controller - Offline</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#f97316">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #e2e8f0;
+            padding: 20px;
+            text-align: center;
+        }
+        .offline-container {
+            max-width: 400px;
+        }
+        .offline-icon {
+            font-size: 64px;
+            margin-bottom: 24px;
+            opacity: 0.8;
+        }
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #f97316;
+        }
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #94a3b8;
+            margin-bottom: 24px;
+        }
+        .last-state {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .last-state h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            margin-bottom: 16px;
+        }
+        .state-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .state-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .state-label {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 4px;
+        }
+        .state-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+        .state-value.meat { color: #ef4444; }
+        .state-value.pit { color: #f97316; }
+        .state-value.setpoint { color: #10b981; }
+        .state-value.fan { color: #3b82f6; }
+        .retry-btn {
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .retry-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+        }
+        .retry-btn:active {
+            transform: translateY(0);
+        }
+        .timestamp {
+            font-size: 12px;
+            color: #475569;
+            margin-top: 16px;
+        }
+        .no-data {
+            color: #64748b;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">📡</div>
+        <h1>You're Offline</h1>
+        <p>Unable to connect to your smoker controller. Check your WiFi connection or make sure the device is powered on.</p>
+        
+        <div class="last-state">
+            <h2>Last Known State</h2>
+            <div id="stateContent">
+                <p class="no-data">No cached data available</p>
+            </div>
+            <div id="timestamp" class="timestamp"></div>
+        </div>
+        
+        <button class="retry-btn" onclick="window.location.reload()">
+            Try Again
+        </button>
+    </div>
+    
+    <script>
+        // Try to load last known state from localStorage
+        function loadLastState() {
+            try {
+                const lastState = localStorage.getItem('smoker_last_state');
+                if (lastState) {
+                    const state = JSON.parse(lastState);
+                    const content = document.getElementById('stateContent');
+                    const timestamp = document.getElementById('timestamp');
+                    
+                    content.innerHTML = `
+                        <div class="state-grid">
+                            <div class="state-item">
+                                <div class="state-label">Meat Temp</div>
+                                <div class="state-value meat">${state.meatTemp !== null ? state.meatTemp + '°F' : '--'}</div>
+                            </div>
+                            <div class="state-item">
+                                <div class="state-label">Pit Temp</div>
+                                <div class="state-value pit">${state.pitTemp !== null ? state.pitTemp + '°F' : '--'}</div>
+                            </div>
+                            <div class="state-item">
+                                <div class="state-label">Setpoint</div>
+                                <div class="state-value setpoint">${state.setpoint}°F</div>
+                            </div>
+                            <div class="state-item">
+                                <div class="state-label">Fan Speed</div>
+                                <div class="state-value fan">${state.fanPercent}%</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (state.timestamp) {
+                        const date = new Date(state.timestamp);
+                        timestamp.textContent = 'Last updated: ' + date.toLocaleString();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to load last state:', e);
+            }
+        }
+        
+        loadLastState();
+    </script>
+</body>
+</html>
