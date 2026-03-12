@@ -6,6 +6,7 @@
 #include "esp_https_ota.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include <mbedtls/sha256.h>
 #include <cJSON.h>
 #include <cctype>
 #include <cstdlib>
@@ -144,6 +145,40 @@ bool partitionMatchesSha256(const esp_partition_t *partition,
   if (esp_partition_get_sha256(partition, digest) != ESP_OK) {
     return false;
   }
+
+  return toHexString(digest, sizeof(digest)) == expectedSha256;
+}
+
+bool partitionRegionMatchesSha256(const esp_partition_t *partition,
+                                  size_t length,
+                                  const String &expectedSha256) {
+  if (!partition || expectedSha256.length() == 0) {
+    return true;
+  }
+  if (length == 0 || length > partition->size) {
+    return false;
+  }
+
+  mbedtls_sha256_context ctx;
+  mbedtls_sha256_init(&ctx);
+
+  mbedtls_sha256_starts(&ctx, 0);
+
+  std::vector<uint8_t> buffer(4096);
+  size_t offset = 0;
+  while (offset < length) {
+    size_t toRead = std::min(buffer.size(), length - offset);
+    if (esp_partition_read(partition, offset, buffer.data(), toRead) != ESP_OK) {
+      mbedtls_sha256_free(&ctx);
+      return false;
+    }
+    mbedtls_sha256_update(&ctx, buffer.data(), toRead);
+    offset += toRead;
+  }
+
+  uint8_t digest[kSha256Bytes] = {0};
+  mbedtls_sha256_finish(&ctx, digest);
+  mbedtls_sha256_free(&ctx);
 
   return toHexString(digest, sizeof(digest)) == expectedSha256;
 }
@@ -597,7 +632,15 @@ bool OTAUpdater::downloadAndUpdate(const String &firmwareUrl) {
     return false;
   }
 
-  if (!partitionMatchesSha256(updatePartition, expectedFirmwareSha256)) {
+  if (expectedFirmwareSize > 0 &&
+      static_cast<size_t>(finalLen) != expectedFirmwareSize) {
+    updateError = "Firmware size mismatch";
+    return false;
+  }
+
+  if (!partitionRegionMatchesSha256(updatePartition,
+                                    static_cast<size_t>(finalLen),
+                                    expectedFirmwareSha256)) {
     updateError = "Firmware checksum mismatch";
     return false;
   }

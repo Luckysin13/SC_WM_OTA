@@ -17,5 +17,5 @@ idf_component_register(
 	EMBED_TXTFILES
 		${CMAKE_SOURCE_DIR}/certs/server_cert.pem
 		${CMAKE_SOURCE_DIR}/certs/server_key.pem
-	REQUIRES esp_http_server esp_https_ota mdns littlefs json
+	REQUIRES esp_http_server esp_https_ota mdns littlefs json mbedtls
 )
