@@ -159,6 +159,62 @@ constexpr const char *kFsBase = "/littlefs";
 constexpr const char *CACHE_STATIC = "public, max-age=86400";  // 24 hours for CSS, JS
 constexpr const char *CACHE_HTML = "no-cache, must-revalidate"; // Always revalidate HTML
 
+bool readRequestBody(httpd_req_t *req, std::string &body) {
+  body.clear();
+  body.resize(req->content_len);
+
+  int offset = 0;
+  while (offset < req->content_len) {
+    int received = httpd_req_recv(req, body.data() + offset, req->content_len - offset);
+    if (received == HTTPD_SOCK_ERR_TIMEOUT) {
+      continue;
+    }
+    if (received <= 0) {
+      body.clear();
+      return false;
+    }
+    offset += received;
+  }
+
+  return true;
+}
+
+int fromHexDigit(char ch) {
+  if (ch >= '0' && ch <= '9') {
+    return ch - '0';
+  }
+  ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  if (ch >= 'a' && ch <= 'f') {
+    return 10 + (ch - 'a');
+  }
+  return -1;
+}
+
+String decodeFormComponent(const char *value) {
+  std::string decoded;
+  decoded.reserve(std::strlen(value));
+
+  for (size_t index = 0; value[index] != '\0'; ++index) {
+    char ch = value[index];
+    if (ch == '+') {
+      decoded.push_back(' ');
+      continue;
+    }
+    if (ch == '%' && value[index + 1] != '\0' && value[index + 2] != '\0') {
+      int high = fromHexDigit(value[index + 1]);
+      int low = fromHexDigit(value[index + 2]);
+      if (high >= 0 && low >= 0) {
+        decoded.push_back(static_cast<char>((high << 4) | low));
+        index += 2;
+        continue;
+      }
+    }
+    decoded.push_back(ch);
+  }
+
+  return String(decoded);
+}
+
 bool setContentType(httpd_req_t *req, const std::string &path) {
   if (path.find(".css") != std::string::npos) {
     return httpd_resp_set_type(req, "text/css") == ESP_OK;
@@ -303,6 +359,8 @@ esp_err_t sendRedirect(httpd_req_t *req, const char *location) {
 }
 } // namespace
 
+extern void requestSystemRestart(unsigned long delayMs);
+
 esp_err_t APModeHandler::handleRootGet(httpd_req_t *req) {
   return sendFile(req, PATH_WIFI);
 }
@@ -310,20 +368,16 @@ esp_err_t APModeHandler::handleRootGet(httpd_req_t *req) {
 esp_err_t APModeHandler::handleRootPost(httpd_req_t *req) {
   auto *self = static_cast<APModeHandler *>(req->user_ctx);
 
-  int total = req->content_len;
   std::string body;
-  body.resize(total);
-  int received = httpd_req_recv(req, body.data(), total);
-  if (received <= 0) {
+  if (!readRequestBody(req, body)) {
     httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid request");
     return ESP_FAIL;
   }
-  body.resize(received);
 
   auto getParam = [&](const char *key) -> String {
     char value[128];
     if (httpd_query_key_value(body.c_str(), key, value, sizeof(value)) == ESP_OK) {
-      return String(value);
+      return decodeFormComponent(value);
     }
     return String();
   };
@@ -346,8 +400,7 @@ esp_err_t APModeHandler::handleRootPost(httpd_req_t *req) {
     self->storage.eraseCredentials();
     self->storage.listAllFiles();
     httpd_resp_send(req, "Credentials erased. Restarting...", HTTPD_RESP_USE_STRLEN);
-    delay(3000);
-    ESP::restart();
+    requestSystemRestart(3000);
     return ESP_OK;
   }
 
@@ -368,8 +421,7 @@ esp_err_t APModeHandler::handleRootPost(httpd_req_t *req) {
   httpd_resp_set_type(req, "text/html");
   httpd_resp_send(req, page.c_str(), page.length());
 
-  delay(2000);
-  ESP::restart();
+  requestSystemRestart(2000);
   return ESP_OK;
 }
 

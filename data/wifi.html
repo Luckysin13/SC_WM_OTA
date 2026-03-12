@@ -55,7 +55,6 @@
         <form action="/" method="POST">
             <h2 style="text-align: center; color: var(--text-primary); margin-bottom: var(--space-lg);">WiFi
                 Configuration</h2>
-
             <!-- SSID Field -->
             <div>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -161,11 +160,11 @@
     </main>
 
     <!-- Scripts -->
-    <script src="scriptwifi.js"></script>
+    <script src="scriptwifi.js?v=2.1.10"></script>
     <script>
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/sw.js?v=3.0.0')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] SW registration failed:', err));
             });

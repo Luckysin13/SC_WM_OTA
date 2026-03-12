@@ -23,6 +23,7 @@
 #define PATH_TIMEZONE "/timezone.txt"
 #define PATH_MEAT_SETPOINT "/meat_setpoint.txt"
 #define PATH_KEEP_WARM_SETPOINT "/kw_setpoint.txt"
+#define PATH_HISTORY_SNAPSHOT "/history_snapshot.bin"
 
 // =============================================================================
 // HTTP POST PARAMETER NAMES

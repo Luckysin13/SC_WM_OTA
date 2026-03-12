@@ -5,6 +5,9 @@
 #include "control/display_state.h"
 #include "control/history_manager.h"
 #include "control/sensor_data.h"
+#include <mutex>
+#include <string>
+#include <utility>
 #include <vector>
 
 
@@ -35,6 +38,7 @@ private:
   ControllerState controller;
   DisplayState display;
   HistoryManager history;
+  mutable std::recursive_mutex mutex;
 
   // Observer list for WebSocket notifications
   std::vector<IStateObserver *> observers;
@@ -52,7 +56,7 @@ public:
   // =========================================================================
 
   // Get sensor data (const reference for read-only access)
-  const SensorData &getSensors() const;
+  SensorData getSensors() const;
 
   // Update sensor data
   void updateSensors(const SensorData &data);
@@ -62,10 +66,14 @@ public:
   // =========================================================================
 
   // Get controller state (const reference for read-only access)
-  const ControllerState &getController() const;
+  ControllerState getController() const;
 
-  // Get controller state (mutable reference for PID computation)
-  ControllerState &getControllerMutable();
+  template <typename Func>
+  auto withController(Func &&func)
+      -> decltype(func(std::declval<ControllerState &>())) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return func(controller);
+  }
 
   // Update controller state
   void updateController(const ControllerState &state);
@@ -75,10 +83,24 @@ public:
   // =========================================================================
 
   // Get display state (const reference for read-only access)
-  const DisplayState &getDisplay() const;
+  DisplayState getDisplay() const;
 
-  // Get display state (mutable reference for updates)
-  DisplayState &getDisplayMutable();
+  template <typename Func>
+  auto withDisplay(Func &&func)
+      -> decltype(func(std::declval<DisplayState &>())) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return func(display);
+  }
+
+  template <typename Func>
+  auto withState(Func &&func)
+      -> decltype(func(std::declval<SensorData &>(),
+                       std::declval<ControllerState &>(),
+                       std::declval<DisplayState &>(),
+                       std::declval<HistoryManager &>())) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return func(sensors, controller, display, history);
+  }
 
   // Update display state and notify observers if changed
   void updateDisplay();
@@ -87,8 +109,14 @@ public:
   // HISTORY ACCESS
   // =========================================================================
 
-  // Get history manager (mutable for updates/retrieval)
-  HistoryManager &getHistory();
+  // Get history manager contents as JSON for WebSocket retrieval
+  String getHistoryJSON() const;
+  String getHistoryChunkJSON(size_t start, size_t maxPoints) const;
+  size_t getHistoryCount() const;
+  std::string serializeHistorySnapshot() const;
+  bool restoreHistorySnapshot(const std::string &snapshotData);
+  bool historyNeedsSnapshot() const;
+  void markHistorySnapshotSaved();
 
   // =========================================================================
   // OBSERVER MANAGEMENT

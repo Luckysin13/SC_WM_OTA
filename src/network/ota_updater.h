@@ -3,6 +3,10 @@
 
 #include "compat/compat.h"
 
+#ifndef PROJECT_VER
+#define PROJECT_VER "0.0.0"
+#endif
+
 // =============================================================================
 // OTA UPDATER CLASS
 // =============================================================================
@@ -30,8 +34,8 @@ public:
     PHASE_FIRMWARE = 2
   };
 
-  // Current firmware version (matches releases/latest/manifest.json)
-  static constexpr const char *CURRENT_VERSION = "2.1.8";
+  // Current firmware version comes from the build metadata.
+  static constexpr const char *CURRENT_VERSION = PROJECT_VER;
   
     // GitHub OTA repository URLs (latest pointers)
     static constexpr const char *MANIFEST_URL =
@@ -48,7 +52,12 @@ private:
   String availableVersion = "";
   String firmwareUrl = "";
   String spiffsUrl = "";
+  String availableDescription = "";
   uint32_t availableSecureVersion = 0;
+  size_t expectedFirmwareSize = 0;
+  size_t expectedSpiffsSize = 0;
+  String expectedFirmwareSha256 = "";
+  String expectedSpiffsSha256 = "";
   String updateError = "";
   String currentVersionOverride = "";
   int updateProgress = 0; // 0-100
@@ -85,12 +94,19 @@ public:
   // Get available version if update exists
   String getAvailableVersion() const { return availableVersion; }
 
+  // Get available release description if provided by the manifest
+  String getAvailableDescription() const { return availableDescription; }
+
   // Get available secure version if provided by manifest
   uint32_t getAvailableSecureVersion() const { return availableSecureVersion; }
 
   // Get URLs for latest artifacts
   String getFirmwareUrl() const { return firmwareUrl; }
   String getSpiffsUrl() const { return spiffsUrl; }
+  size_t getExpectedFirmwareSize() const { return expectedFirmwareSize; }
+  size_t getExpectedSpiffsSize() const { return expectedSpiffsSize; }
+  String getExpectedFirmwareSha256() const { return expectedFirmwareSha256; }
+  String getExpectedSpiffsSha256() const { return expectedSpiffsSha256; }
 
   // Get error message if update failed
   String getErrorMessage() const { return updateError; }

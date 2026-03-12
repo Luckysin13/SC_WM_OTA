@@ -3,6 +3,7 @@
 
 #include "config/paths_config.h"
 #include "compat/compat.h"
+#include <string>
 
 // =============================================================================
 // PERSISTENT STORAGE CLASS
@@ -30,11 +31,15 @@ private:
 
   // Generic file operations
   String readFile(const char *path);
-  void writeFile(const char *path, const char *content);
+  bool writeFile(const char *path, const char *content);
 
   // NVS helpers for WiFi credentials
   void saveCredentialsToNVS(const WiFiCredentials &creds);
   WiFiCredentials loadCredentialsFromNVS();
+  bool saveTempOffsetsToNVS(int pitOffset, int meatOffset);
+  bool loadTempOffsetsFromNVS(int &pitOffset, int &meatOffset);
+  bool savePIDTuningsToNVS(double kp, double ki, double kd);
+  bool loadPIDTuningsFromNVS(double &kp, double &ki, double &kd);
   void clearNVS();
 
 public:
@@ -88,6 +93,11 @@ public:
 
   // Save firmware version (OTA)
   void saveFirmwareVersion(const String &version);
+
+  // Save and load restart-safe history checkpoints.
+  bool saveHistorySnapshot(const std::string &data);
+  std::string loadHistorySnapshot();
+  void clearHistorySnapshot();
 
   // Debug: List all files in LittleFS
   void listAllFiles();

@@ -19,6 +19,7 @@ let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
 let reconnectTimeout = null;
 let selectedTimezone = "";
 const lastUserInteractions = {}; // Tracks timestamp of last user interaction per input ID
+const dirtyInputs = new Set();
 let lastKeepWarmEnabled = false;
 let lastMeatDoneSetpoint = null;
 let lastMeatTempValue = null;
@@ -110,7 +111,7 @@ function initInputTracking() {
     trackedInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener('input', () => recordInteraction(id));
+            el.addEventListener('input', () => markInputDirty(id));
             el.addEventListener('focus', () => recordInteraction(id));
         }
     });
@@ -120,9 +121,54 @@ function recordInteraction(id) {
     lastUserInteractions[id] = Date.now();
 }
 
+function markInputDirty(id) {
+    dirtyInputs.add(id);
+    recordInteraction(id);
+}
+
+function normalizeComparableValue(value) {
+    if (value === undefined || value === null) {
+        return '';
+    }
+
+    const text = String(value).trim();
+    if (text === '') {
+        return '';
+    }
+
+    const numericValue = Number(text);
+    if (!Number.isNaN(numericValue)) {
+        return String(numericValue);
+    }
+
+    return text;
+}
+
+function valuesMatchForInput(element, incomingValue) {
+    return normalizeComparableValue(element.value) === normalizeComparableValue(incomingValue);
+}
+
 function isRecentlyInteracted(id) {
     const lastTime = lastUserInteractions[id] || 0;
     return (Date.now() - lastTime) < 3000; // 3 second grace period
+}
+
+function shouldApplyIncomingValue(inputId, element, incomingValue) {
+    if (!element) {
+        return false;
+    }
+
+    const matchesIncomingValue = valuesMatchForInput(element, incomingValue);
+
+    if (matchesIncomingValue) {
+        dirtyInputs.delete(inputId);
+    }
+
+    if (dirtyInputs.has(inputId) && !matchesIncomingValue) {
+        return false;
+    }
+
+    return !isRecentlyInteracted(inputId) && document.activeElement !== element;
 }
 
 // =============================================================================
@@ -191,7 +237,7 @@ function toggleFanMode() {
         return;
     }
     const nextAuto = !fanAuto;
-    const mode = nextAuto ? 'auto' : 'off';
+    const mode = nextAuto ? 'auto' : 'manual';
     websocket.send(`FanMode:${mode}`);
     console.log(`[WebSocket] Sent fan mode: ${mode}`);
     updateFanModeButton(nextAuto);
@@ -542,7 +588,7 @@ function onMessage(event) {
         // Update meat target input only if changed externally
         if (data.boxValue8 !== undefined) {
             const box8 = document.getElementById('box8');
-            if (box8 && document.activeElement !== box8) {
+            if (shouldApplyIncomingValue('box8', box8, data.boxValue8)) {
                 box8.value = data.boxValue8;
             }
         }
@@ -550,7 +596,7 @@ function onMessage(event) {
         // Update keep warm setpoint input only if changed externally
         if (data.boxValue9 !== undefined) {
             const box9 = document.getElementById('box9');
-            if (box9 && document.activeElement !== box9) {
+            if (shouldApplyIncomingValue('box9', box9, data.boxValue9)) {
                 box9.value = data.boxValue9;
             }
         }
@@ -560,7 +606,7 @@ function onMessage(event) {
             updateDisplayValue('calPitTemp', null, data.boxValue1);
         }
         const pitOffsetInput = document.getElementById('pitOffsetInput');
-        if (pitOffsetInput && !isRecentlyInteracted('pitOffsetInput')) {
+        if (shouldApplyIncomingValue('pitOffsetInput', pitOffsetInput, data.pitOffset || 0)) {
             pitOffsetInput.value = data.pitOffset || 0;
         }
 
@@ -569,31 +615,27 @@ function onMessage(event) {
             updateDisplayValue('calMeatTemp', null, data.boxValue0);
         }
         const meatOffsetInput = document.getElementById('meatOffsetInput');
-        if (meatOffsetInput && !isRecentlyInteracted('meatOffsetInput')) {
+        if (shouldApplyIncomingValue('meatOffsetInput', meatOffsetInput, data.meatOffset || 0)) {
             meatOffsetInput.value = data.meatOffset || 0;
         }
 
         // PID Parameters
         const kpInput = document.getElementById('kpInput');
-        if (kpInput && document.activeElement !== kpInput) {
+        if (shouldApplyIncomingValue('kpInput', kpInput, data.kp || "10.00")) {
             kpInput.value = data.kp || "10.00";
         }
         const kiInput = document.getElementById('kiInput');
-        if (kiInput && document.activeElement !== kiInput) {
+        if (shouldApplyIncomingValue('kiInput', kiInput, data.ki || "0.05")) {
             kiInput.value = data.ki || "0.05";
         }
         const kdInput = document.getElementById('kdInput');
-        if (kdInput && document.activeElement !== kdInput) {
+        if (shouldApplyIncomingValue('kdInput', kdInput, data.kd || "2.00")) {
             kdInput.value = data.kd || "2.00";
         }
 
         if (data.isAP !== undefined) {
             updateAPModeUI(data.isAP);
             updateWiFiDisplay(data);
-        }
-
-        if (data.fanAuto !== undefined) {
-            updateFanModeButton(data.fanAuto);
         }
 
         // OTA status/progress
@@ -1075,7 +1117,7 @@ function adjustValue(inputId, delta) {
 
     // Use toFixed to avoid floating point issues if delta is small
     input.value = (currentValue + delta);
-    recordInteraction(inputId);
+    markInputDirty(inputId);
     input.focus();
 }
 // =============================================================================

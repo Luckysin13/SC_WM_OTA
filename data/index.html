@@ -19,7 +19,7 @@
     <!-- Navigation Header -->
     <div class="navbar">
         <div tabindex="0" class="menu">
-            <label>Smoker Controller1.0.32</label>
+            <label>Smoker Controller</label>
             <div class="menu-dropdown">
                 <a href="index.html">Home</a>
                 <a href="wifi.html">Wifi Setup</a>
@@ -128,7 +128,7 @@
         // Register Service Worker for PWA support (HTTP only - self-signed HTTPS certs not supported)
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
+                navigator.serviceWorker.register('/sw.js?v=3.0.0')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] Service Worker registration failed:', err));
             });

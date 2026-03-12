@@ -20,12 +20,15 @@ private:
     std::vector<int> clientFds;
 
     static esp_err_t handleWs(httpd_req_t* req);
-    void handleMessage(const String& message);
+    void handleMessage(const String& message, int clientFd);
     void registerClient(int fd);
     void unregisterClient(int fd);
+    void sendToClient(int fd, const String& json);
+    void sendHistoryChunk(int fd, size_t start);
 
 public:
     WebSocketHandler(StateCoordinator& coordinator);
+    ~WebSocketHandler() override;
 
     void init(httpd_handle_t httpdServer);
 

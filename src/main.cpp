@@ -8,10 +8,12 @@
 
 #include "compat/compat.h"
 #include <cstring>
+#include <memory>
 #include "driver/gpio.h"
 #include "esp_ota_ops.h"
 #include "esp_http_server.h"
 #include "esp_https_server.h"
+#include "esp_system.h"
 #include "freertos/queue.h"
 
 // Configuration
@@ -71,18 +73,95 @@ httpd_handle_t server = nullptr;
 TimeSync timeSync;
 
 // WebSocket handler (pointer to manage lifecycle)
-WebSocketHandler *wsHandler = nullptr;
+std::unique_ptr<WebSocketHandler> wsHandler;
 
 OTAUpdater otaUpdater;
 
 // AP mode handler (pointer to manage lifecycle)
-APModeHandler *apHandler = nullptr;
+std::unique_ptr<APModeHandler> apHandler;
 
 // STA mode handler (pointer to manage lifecycle)
-STAModeHandler *staHandler = nullptr;
+std::unique_ptr<STAModeHandler> staHandler;
 
 namespace {
 QueueHandle_t s_tzQueue = nullptr;
+volatile bool s_restartRequested = false;
+unsigned long s_restartAtMs = 0;
+volatile bool s_wifiReadyForUser = false;
+constexpr unsigned long kHistorySnapshotIntervalMs = 3UL * 60UL * 1000UL;
+
+bool shouldRestoreHistoryForReset(esp_reset_reason_t reason) {
+  switch (reason) {
+  case ESP_RST_SW:
+  case ESP_RST_PANIC:
+  case ESP_RST_INT_WDT:
+  case ESP_RST_TASK_WDT:
+  case ESP_RST_WDT:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool saveHistorySnapshot(bool force) {
+  if (!storage.isMounted()) {
+    return false;
+  }
+
+  if (!force && !stateCoord.historyNeedsSnapshot()) {
+    return false;
+  }
+
+  std::string snapshot = stateCoord.serializeHistorySnapshot();
+  if (snapshot.empty()) {
+    storage.clearHistorySnapshot();
+    stateCoord.markHistorySnapshotSaved();
+    return true;
+  }
+
+  bool ok = storage.saveHistorySnapshot(snapshot);
+  if (ok) {
+    stateCoord.markHistorySnapshotSaved();
+  }
+  return ok;
+}
+
+void restoreHistorySnapshotForBoot(esp_reset_reason_t resetReason) {
+  if (!storage.isMounted()) {
+    return;
+  }
+
+  if (!shouldRestoreHistoryForReset(resetReason)) {
+    storage.clearHistorySnapshot();
+    return;
+  }
+
+  std::string snapshot = storage.loadHistorySnapshot();
+  if (snapshot.empty()) {
+    return;
+  }
+
+  if (stateCoord.restoreHistorySnapshot(snapshot)) {
+    Serial.printf("[HISTORY] Restored %u points after restart\n",
+                  static_cast<unsigned>(stateCoord.getHistoryCount()));
+    return;
+  }
+
+  Serial.println("[HISTORY] Snapshot restore failed; clearing snapshot");
+  storage.clearHistorySnapshot();
+}
+
+void shutdownRuntimeServices() {
+  wsHandler.reset();
+  staHandler.reset();
+  apHandler.reset();
+
+  if (server != nullptr) {
+    httpd_stop(server);
+    server = nullptr;
+    Serial.println("[NET] HTTP server stopped");
+  }
+}
 
 void handleRollbackIfNeeded() {
   const esp_partition_t *running = esp_ota_get_running_partition();
@@ -99,25 +178,50 @@ void handleRollbackIfNeeded() {
 }
 }
 
+bool saveHistorySnapshotForRestart() { return saveHistorySnapshot(true); }
+
+void prepareForRestart() {
+  s_wifiReadyForUser = false;
+  saveHistorySnapshotForRestart();
+  shutdownRuntimeServices();
+}
+
+void requestSystemRestart(unsigned long delayMs) {
+  s_restartAtMs = millis() + delayMs;
+  s_restartRequested = true;
+  Serial.printf("[SYS] Restart requested in %lu ms\n", delayMs);
+}
+
 // =============================================================================
 // WiFi LED TASK
 // =============================================================================
 void wifiLedTask(void *param) {
   (void)param;
+
+  enum class WifiLedMode {
+    Off,
+    Blink,
+    Solid,
+  };
   
   // Removed task start print to reduce serial spam
   
   bool ledState = false;
   unsigned long lastTime = millis();
+  unsigned long pendingSince = millis();
   bool lastStateWasSolid = false;
   bool debugPrinted = false;
   int loopCount = 0;
   unsigned long lastWifiCheck = 0;
   bool isStaConnected = false;
+  WifiLedMode appliedMode = WifiLedMode::Off;
+  WifiLedMode pendingMode = WifiLedMode::Off;
   
   while (1) {
     wifi_mode_t wifiMode = WIFI_MODE_NULL;
     esp_wifi_get_mode(&wifiMode);
+    bool wifiReadyForUser = s_wifiReadyForUser;
+    WifiLedMode desiredMode = WifiLedMode::Off;
     
     // Check WiFi connection status only once per second
     unsigned long now = millis();
@@ -141,8 +245,29 @@ void wifiLedTask(void *param) {
       // Removed debug print to reduce serial spam
     }
     
-    // STA connected: solid ON
-    if (isStaConnected && wifiMode == WIFI_MODE_STA) {
+    if (!wifiReadyForUser) {
+      desiredMode = WifiLedMode::Off;
+    } else if (isStaConnected && wifiMode == WIFI_MODE_STA) {
+      desiredMode = WifiLedMode::Solid;
+    } else if (wifiMode == WIFI_MODE_AP ||
+               (wifiMode == WIFI_MODE_APSTA && !isStaConnected)) {
+      desiredMode = WifiLedMode::Blink;
+    } else if (isStaConnected && wifiMode == WIFI_MODE_APSTA) {
+      desiredMode = WifiLedMode::Solid;
+    }
+
+    if (desiredMode != pendingMode) {
+      pendingMode = desiredMode;
+      pendingSince = now;
+    }
+
+    if (appliedMode != pendingMode && now - pendingSince >= 3000) {
+      appliedMode = pendingMode;
+      lastTime = now;
+      ledState = false;
+    }
+
+    if (appliedMode == WifiLedMode::Solid) {
       gpio_set_level(static_cast<gpio_num_t>(PIN_WIFI_LED), 1);
       if (!lastStateWasSolid) {
         // Removed print
@@ -153,8 +278,7 @@ void wifiLedTask(void *param) {
       continue;
     }
 
-    // AP active or APSTA without STA connection: blink at 500ms
-    if (wifiMode == WIFI_MODE_AP || (wifiMode == WIFI_MODE_APSTA && !isStaConnected)) {
+    if (appliedMode == WifiLedMode::Blink) {
       if (!debugPrinted) {
         // Removed print
         debugPrinted = true;
@@ -169,18 +293,6 @@ void wifiLedTask(void *param) {
       }
       lastStateWasSolid = false;
       vTaskDelay(pdMS_TO_TICKS(50));
-      continue;
-    }
-    
-    // APSTA with STA connected: solid ON
-    if (isStaConnected && wifiMode == WIFI_MODE_APSTA) {
-      gpio_set_level(static_cast<gpio_num_t>(PIN_WIFI_LED), 1);
-      if (!lastStateWasSolid) {
-        // Removed print
-        lastStateWasSolid = true;
-        debugPrinted = false;
-      }
-      vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
@@ -212,6 +324,9 @@ void requestTimezoneChange(const String &tz) {
 // SETUP
 // =============================================================================
 void setup() {
+  s_wifiReadyForUser = false;
+  esp_reset_reason_t resetReason = esp_reset_reason();
+
   // Initialize serial communication
   Serial.begin(115200);
   delay(500);
@@ -219,6 +334,7 @@ void setup() {
   Serial.println("Smoker Controller - Phase 4");
   Serial.println("Complete Modular Architecture");
   Serial.println("===========================================\n");
+  Serial.printf("[SYS] Reset reason: %d\n", static_cast<int>(resetReason));
 
   handleRollbackIfNeeded();
 
@@ -298,7 +414,7 @@ void setup() {
   
   // Initialize WebSocket handler if server started
   if (httpServerStarted) {
-    wsHandler = new WebSocketHandler(stateCoord);
+    wsHandler = std::make_unique<WebSocketHandler>(stateCoord);
     wsHandler->init(server);
     
     Serial.println("[OK] Web server started");
@@ -312,7 +428,7 @@ void setup() {
     Serial.println("\n[OK] Network initialized in STA mode");
 
     // Setup web server routes for normal operation
-    staHandler = new STAModeHandler(server, storage, networkMgr);
+    staHandler = std::make_unique<STAModeHandler>(server, storage, networkMgr);
     staHandler->setupRoutes();
 
     // Initialize NTP time sync with stored timezone
@@ -320,6 +436,8 @@ void setup() {
       String savedTz = storage.loadTimezone();
       timeSync.begin(savedTz.c_str());
     }
+
+    s_wifiReadyForUser = true;
 
   } else if (httpServerStarted && mode == NetworkMode::AP) {
     // AP Mode: Configuration portal
@@ -329,14 +447,18 @@ void setup() {
     }
 
     // Setup web server routes for configuration
-    apHandler = new APModeHandler(server, storage, networkMgr);
+    apHandler = std::make_unique<APModeHandler>(server, storage, networkMgr);
     apHandler->setupRoutes();
+
+    s_wifiReadyForUser = true;
 
   } else if (mode != NetworkMode::NONE) {
     // HTTP server failed to start but network is up
     Serial.println("\n[ERROR] HTTP server failed but network is available");
+    s_wifiReadyForUser = false;
   } else {
     Serial.println("\n[ERROR] Network initialization failed");
+    s_wifiReadyForUser = false;
   }
   
   // Start WiFi LED task after WiFi is initialized
@@ -391,27 +513,29 @@ void setup() {
 
   // Initialize state coordinator
   stateCoord.begin();
+  restoreHistorySnapshotForBoot(resetReason);
 
   // Initialize display state
-  ControllerState &ctrlState = stateCoord.getControllerMutable();
-  ctrlState.setpoint = DEFAULT_SETPOINT;
+  double defaultSetpoint = DEFAULT_SETPOINT;
+  stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                           DisplayState &display, HistoryManager &) {
+    ctrlState.setpoint = DEFAULT_SETPOINT;
+    ctrlState.meatSetpoint = storage.loadMeatSetpoint();
+    ctrlState.keepWarmSetpoint = storage.loadKeepWarmSetpoint();
 
-  DisplayState &display = stateCoord.getDisplayMutable();
-  display.updateSetpoint(ctrlState.setpoint);
-  display.pitOffset = String(pitOffset);
-  display.meatOffset = String(meatOffset);
-  display.kp = String(kp, 2);
-  display.ki = String(ki, 2);
-  display.kd = String(kd, 2);
-  display.timezone = tz;
+    display.updateSetpoint(ctrlState.setpoint);
+    display.pitOffset = String(pitOffset);
+    display.meatOffset = String(meatOffset);
+    display.kp = String(kp, 2);
+    display.ki = String(ki, 2);
+    display.kd = String(kd, 2);
+    display.timezone = tz;
+    display.meatSetpoint = String((int)ctrlState.meatSetpoint);
+    display.keepWarmSetpoint = String((int)ctrlState.keepWarmSetpoint);
+    defaultSetpoint = ctrlState.setpoint;
+  });
 
-  // Load settings for Ramp-to-Done
-  ctrlState.meatSetpoint = storage.loadMeatSetpoint();
-  ctrlState.keepWarmSetpoint = storage.loadKeepWarmSetpoint();
-  display.meatSetpoint = String((int)ctrlState.meatSetpoint);
-  display.keepWarmSetpoint = String((int)ctrlState.keepWarmSetpoint);
-
-  Serial.printf("[OK] Default setpoint: %.0f°F\n", ctrlState.setpoint);
+  Serial.printf("[OK] Default setpoint: %.0f°F\n", defaultSetpoint);
 
   Serial.println("\n===========================================");
   Serial.println("Performing Sensor Warmup...");
@@ -432,6 +556,15 @@ void setup() {
 // MAIN LOOP
 // =============================================================================
 void loop() {
+  static unsigned long lastHistorySnapshotMs = 0;
+
+  if (s_restartRequested && static_cast<long>(millis() - s_restartAtMs) >= 0) {
+    s_restartRequested = false;
+    prepareForRestart();
+    delay(100);
+    ESP::restart();
+  }
+
   // Cleanup disconnected WebSocket clients (STA mode only)
   if (wsHandler != nullptr) {
     wsHandler->cleanupClients();
@@ -489,7 +622,7 @@ void loop() {
     String storedVersion = storage.loadFirmwareVersion();
     String reportedVersion = storedVersion.length() > 0
                                  ? storedVersion
-                                 : String(OTAUpdater::CURRENT_VERSION);
+                                 : otaUpdater.getCurrentVersion();
     if (otaUpdater.getStatus() == OTAUpdater::SUCCESS &&
         available.length() > 0) {
       reportedVersion = available;
@@ -503,6 +636,7 @@ void loop() {
     otaJson += "}";
     if (wsHandler) wsHandler->updateClients(otaJson);
     if (otaUpdater.getStatus() == OTAUpdater::SUCCESS && otaUpdater.shouldReboot()) {
+      prepareForRestart();
       delay(1000);
       ESP::restart();
     }
@@ -514,138 +648,118 @@ void loop() {
   sensorData.meatTemp = tempSensor.readMeatTemp();
   stateCoord.updateSensors(sensorData);
 
-  // Get controller state (mutable for PID computation)
-  ControllerState &ctrlState = stateCoord.getControllerMutable();
-
-  // Update lid detection
-  ctrlState.lidOpen =
-      lidDetector.update(sensorData.pitTemp, ctrlState.setpoint);
-
-  // Run PID control loop (but skip if lid is open)
   double pidOutput = 0;
-  if (ctrlState.lidOpen) {
-    // If lid is open, we "halt" the PID output but keep lastInput updated to
-    // avoid jumps
-    ctrlState.lastInput = sensorData.pitTemp;
-    pidOutput = 0;
+  stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                           DisplayState &display, HistoryManager &) {
+    ctrlState.lidOpen = lidDetector.update(sensorData.pitTemp, ctrlState.setpoint);
 
-    // Cancel autotune if lid opens
-    if (ctrlState.autotuneActive) {
-      ctrlState.autotuneActive = false;
-      autotuner.stop();
-      Serial.println("[Autotune] Cancelled: Lid opened.");
-    }
-  } else if (ctrlState.autotuneActive) {
-    // Run Autotuner relay logic
-    pidOutput = autotuner.update(sensorData.pitTemp);
-    ctrlState.pidOutput = pidOutput; // For visibility
+    if (ctrlState.lidOpen) {
+      ctrlState.lastInput = sensorData.pitTemp;
+      pidOutput = 0;
 
-    // Check if finished
-    if (autotuner.getState() == PIDAutotuner::State::COMPLETE) {
-      double newKp, newKi, newKd;
-      autotuner.getResults(newKp, newKi, newKd);
-
-      // Apply new tunings
-      pidController.setTunings(newKp, newKi, newKd);
-      storage.savePIDTunings(newKp, newKi, newKd);
-
-      // Update display state immediately
-      DisplayState &display = stateCoord.getDisplayMutable();
-      display.kp = String(newKp, 2);
-      display.ki = String(newKi, 2);
-      display.kd = String(newKd, 2);
-
-      ctrlState.autotuneActive = false;
-      Serial.println("[Autotune] Applied and finished.");
-    } else if (autotuner.getState() == PIDAutotuner::State::FAILED) {
-      ctrlState.autotuneActive = false;
-      Serial.println("[Autotune] Failed and stopped.");
-    }
-  } else {
-    pidOutput = pidController.compute(sensorData.pitTemp, ctrlState);
-  }
-
-  // Ramp-to-Done (Keep Warm) Logic
-  if (ctrlState.keepWarmEnabled &&
-      Temperature::isValidTemp(sensorData.meatTemp)) {
-    if (sensorData.meatTemp >= (ctrlState.meatSetpoint + 0.5)) {
-      if (ctrlState.setpoint != ctrlState.keepWarmSetpoint) {
-        Serial.printf("[KeepWarm] Meat reached target (%.1f). Dropping pit "
-                      "setpoint to %.1f\n",
-                      sensorData.meatTemp, ctrlState.keepWarmSetpoint);
-        ctrlState.setpoint = ctrlState.keepWarmSetpoint;
-        // Reset PID for new lower target
-        ctrlState.reset();
+      if (ctrlState.autotuneActive) {
+        ctrlState.autotuneActive = false;
+        autotuner.stop();
+        Serial.println("[Autotune] Cancelled: Lid opened.");
       }
-    }
-  }
+    } else if (ctrlState.autotuneActive) {
+      pidOutput = autotuner.update(sensorData.pitTemp);
+      ctrlState.pidOutput = pidOutput;
 
-  // Apply fan output (with minimum duty cycle enforcement)
-  if (!ctrlState.fanAuto) {
-    fanActuator.setDutyCycle(0);
-    ctrlState.pidOutput = 0;
-    ctrlState.fanPercent = 0;
-  } else if (pidOutput >= FAN_MIN_DUTY &&
-             Temperature::isValidTemp(sensorData.pitTemp)) {
-    fanActuator.setDutyCycle((int)pidOutput);
-    ctrlState.fanPercent = fanActuator.getSpeedPercent();
-  } else {
-    fanActuator.setDutyCycle(0);
-    ctrlState.fanPercent = 0;
-  }
+      if (autotuner.getState() == PIDAutotuner::State::COMPLETE) {
+        double newKp, newKi, newKd;
+        autotuner.getResults(newKp, newKi, newKd);
+
+        pidController.setTunings(newKp, newKi, newKd);
+        storage.savePIDTunings(newKp, newKi, newKd);
+
+        display.kp = String(newKp, 2);
+        display.ki = String(newKi, 2);
+        display.kd = String(newKd, 2);
+
+        ctrlState.autotuneActive = false;
+        Serial.println("[Autotune] Applied and finished.");
+      } else if (autotuner.getState() == PIDAutotuner::State::FAILED) {
+        ctrlState.autotuneActive = false;
+        Serial.println("[Autotune] Failed and stopped.");
+      }
+    } else {
+      pidOutput = pidController.compute(sensorData.pitTemp, ctrlState);
+    }
+
+    if (ctrlState.keepWarmEnabled &&
+        Temperature::isValidTemp(sensorData.meatTemp) &&
+        sensorData.meatTemp >= (ctrlState.meatSetpoint + 0.5) &&
+        ctrlState.setpoint != ctrlState.keepWarmSetpoint) {
+      Serial.printf("[KeepWarm] Meat reached target (%.1f). Dropping pit "
+                    "setpoint to %.1f\n",
+                    sensorData.meatTemp, ctrlState.keepWarmSetpoint);
+      ctrlState.setpoint = ctrlState.keepWarmSetpoint;
+      ctrlState.reset();
+    }
+
+    if (!ctrlState.fanAuto) {
+      fanActuator.setDutyCycle(0);
+      ctrlState.pidOutput = 0;
+      ctrlState.fanPercent = 0;
+    } else if (pidOutput >= FAN_MIN_DUTY &&
+               Temperature::isValidTemp(sensorData.pitTemp)) {
+      fanActuator.setDutyCycle((int)pidOutput);
+      ctrlState.fanPercent = fanActuator.getSpeedPercent();
+    } else {
+      fanActuator.setDutyCycle(0);
+      ctrlState.fanPercent = 0;
+    }
+  });
 
   // Update display state for WebSocket transmission (Both AP and STA modes)
   if (networkMgr.getMode() != NetworkMode::NONE) {
-    DisplayState &display = stateCoord.getDisplayMutable();
+    stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                             DisplayState &display, HistoryManager &) {
+      display.isAP = (networkMgr.getMode() == NetworkMode::AP);
+      display.wifiConnected = networkMgr.isConnected();
+      display.wifiIp = networkMgr.getLocalIP().toString();
+      if (display.isAP) {
+        display.wifiSsid = String(AP_SSID);
+        display.wifiRssi = String(0);
+      } else if (display.wifiConnected) {
+        display.wifiSsid = networkMgr.getSSID();
+        display.wifiRssi = String(networkMgr.getRSSI());
+      } else {
+        display.wifiSsid = "";
+        display.wifiRssi = String(0);
+      }
 
-    // Update AP mode flag
-    display.isAP = (networkMgr.getMode() == NetworkMode::AP);
+      display.updateMeatTemp(sensorData.meatTemp,
+                             Temperature::isValidTemp(sensorData.meatTemp));
+      display.updatePitTemp(sensorData.pitTemp,
+                            Temperature::isValidTemp(sensorData.pitTemp));
+      display.updateSetpoint(ctrlState.setpoint);
+      display.meatSetpoint = String((int)ctrlState.meatSetpoint);
+      display.keepWarmSetpoint = String((int)ctrlState.keepWarmSetpoint);
+      display.updateFanSpeed(ctrlState.fanPercent);
+      display.lidOpen = ctrlState.lidOpen;
+      display.autotuneActive = ctrlState.autotuneActive;
+      display.autotuneState = (int)autotuner.getState();
+      display.fanAuto = ctrlState.fanAuto;
 
-    // WiFi status details
-    display.wifiConnected = networkMgr.isConnected();
-    display.wifiIp = networkMgr.getLocalIP().toString();
-    if (display.isAP) {
-      display.wifiSsid = String(AP_SSID);
-      display.wifiRssi = String(0);
-    } else if (display.wifiConnected) {
-      display.wifiSsid = networkMgr.getSSID();
-      display.wifiRssi = String(networkMgr.getRSSI());
-    } else {
-      display.wifiSsid = "";
-      display.wifiRssi = String(0);
-    }
-
-    display.updateMeatTemp(sensorData.meatTemp,
-                           Temperature::isValidTemp(sensorData.meatTemp));
-    display.updatePitTemp(sensorData.pitTemp,
-                          Temperature::isValidTemp(sensorData.pitTemp));
-    display.updateSetpoint(ctrlState.setpoint);
-    display.meatSetpoint = String((int)ctrlState.meatSetpoint);
-    display.keepWarmSetpoint = String((int)ctrlState.keepWarmSetpoint);
-    display.updateFanSpeed(ctrlState.fanPercent);
-
-    // Check for changes and notify WebSocket clients if needed
-    display.updateSetpoint(ctrlState.setpoint);
-    display.updateFanSpeed(ctrlState.fanPercent);
-    display.lidOpen = ctrlState.lidOpen;
-    display.autotuneActive = ctrlState.autotuneActive;
-    display.autotuneState = (int)autotuner.getState();
-    display.fanAuto = ctrlState.fanAuto;
-
-    if (s_tzQueue) {
-      char tzBuf[64] = {0};
-      if (xQueueReceive(s_tzQueue, &tzBuf, 0) == pdTRUE) {
-        String newTz = String(tzBuf);
-        if (newTz.length() > 0) {
-          timeSync.setTimezone(newTz.c_str());
-          storage.saveTimezone(newTz);
-          display.timezone = newTz;
+      if (s_tzQueue) {
+        char tzBuf[64] = {0};
+        if (xQueueReceive(s_tzQueue, &tzBuf, 0) == pdTRUE) {
+          String newTz = String(tzBuf);
+          if (newTz.length() > 0) {
+            timeSync.setTimezone(newTz.c_str());
+            storage.saveTimezone(newTz);
+            display.timezone = newTz;
+          }
         }
       }
-    }
+    });
 
     stateCoord.updateDisplay();
   }
+
+  ControllerState ctrlState = stateCoord.getController();
 
   // Print status to serial
   Serial.println("-------------------------------------------");
@@ -727,6 +841,12 @@ void loop() {
   Serial.printf("Fan Speed:    %d%%\n", ctrlState.fanPercent);
   Serial.printf("Fan Duty:     %d (0-255)\n", fanActuator.getDutyCycle());
   Serial.println("-------------------------------------------\n");
+
+  unsigned long now = millis();
+  if (now - lastHistorySnapshotMs >= kHistorySnapshotIntervalMs) {
+    saveHistorySnapshot(false);
+    lastHistorySnapshotMs = now;
+  }
 
   delay(1000);
 }

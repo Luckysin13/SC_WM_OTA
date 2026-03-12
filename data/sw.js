@@ -4,7 +4,9 @@
 // Provides offline caching and background sync capabilities
 // =============================================================================
 
-const CACHE_NAME = 'smoker-controller-v2';
+const CACHE_PREFIX = 'smoker-controller-';
+const CACHE_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
+const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache on install
@@ -55,7 +57,7 @@ self.addEventListener('activate', (event) => {
       .then((cacheNames) => {
         return Promise.all(
           cacheNames
-            .filter((name) => name !== CACHE_NAME)
+            .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
             .map((name) => {
               console.log('[SW] Deleting old cache:', name);
               return caches.delete(name);

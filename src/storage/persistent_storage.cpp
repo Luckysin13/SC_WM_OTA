@@ -7,6 +7,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -16,6 +17,7 @@
 
 namespace {
 constexpr const char *kBasePath = "/littlefs";
+constexpr const char *kConfigNamespace = "config";
 
 std::string buildPath(const char *path) {
   if (!path) {
@@ -43,6 +45,17 @@ String nvsGetString(nvs_handle_t handle, const char *key) {
   buffer.resize(required - 1);
   return String(buffer);
 }
+
+std::string buildTempPath(const char *path) {
+  return buildPath(path) + ".tmp";
+}
+
+void trimTrailingNewlines(std::string &content) {
+  while (!content.empty() &&
+         (content.back() == '\n' || content.back() == '\r')) {
+    content.pop_back();
+  }
+}
 } // namespace
 
 bool PersistentStorage::begin() {
@@ -61,7 +74,7 @@ bool PersistentStorage::begin() {
       .base_path = kBasePath,
       .partition_label = "littlefs",
       .partition = nullptr,
-      .format_if_mount_failed = true,
+      .format_if_mount_failed = false,
       .read_only = false,
       .dont_mount = false,
       .grow_on_mount = true,
@@ -69,7 +82,7 @@ bool PersistentStorage::begin() {
 
   esp_err_t ret = esp_vfs_littlefs_register(&conf);
   if (ret != ESP_OK) {
-    Serial.println("[ERROR] LittleFS mount failed");
+    Serial.printf("[ERROR] LittleFS mount failed: %s\n", esp_err_to_name(ret));
     mounted = false;
     return false;
   }
@@ -92,39 +105,57 @@ String PersistentStorage::readFile(const char *path) {
     return String();
   }
 
+  std::string content;
   char buffer[256];
-  if (!fgets(buffer, sizeof(buffer), file)) {
+  size_t bytesRead = 0;
+  while ((bytesRead = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+    content.append(buffer, bytesRead);
+  }
+  if (ferror(file)) {
     fclose(file);
     return String();
   }
   fclose(file);
 
-  std::string content(buffer);
-  if (!content.empty() && (content.back() == '\n' || content.back() == '\r')) {
-    content.erase(content.find_last_not_of("\r\n") + 1);
-  }
+  trimTrailingNewlines(content);
 
   Serial.printf("  [OK] Read: %s\n", content.c_str());
   return String(content);
 }
 
-void PersistentStorage::writeFile(const char *path, const char *content) {
+bool PersistentStorage::writeFile(const char *path, const char *content) {
   if (!mounted) {
     Serial.println("[ERROR] LittleFS not mounted");
-    return;
+    return false;
   }
 
   std::string fullPath = buildPath(path);
-  FILE *file = fopen(fullPath.c_str(), "w");
+  std::string tempPath = buildTempPath(path);
+  FILE *file = fopen(tempPath.c_str(), "w");
   if (!file) {
-    Serial.printf("  [ERROR] Failed to open file for writing: %s\n", fullPath.c_str());
-    return;
+    Serial.printf("  [ERROR] Failed to open file for writing: %s\n", tempPath.c_str());
+    return false;
   }
 
-  if (content) {
-    fprintf(file, "%s", content);
+  size_t contentLength = content ? strlen(content) : 0;
+  if (contentLength > 0 && fwrite(content, 1, contentLength, file) != contentLength) {
+    fclose(file);
+    unlink(tempPath.c_str());
+    Serial.printf("  [ERROR] Failed to write file: %s\n", tempPath.c_str());
+    return false;
   }
+
+  fflush(file);
+  fsync(fileno(file));
   fclose(file);
+
+  if (rename(tempPath.c_str(), fullPath.c_str()) != 0) {
+    unlink(tempPath.c_str());
+    Serial.printf("  [ERROR] Failed to replace file: %s\n", fullPath.c_str());
+    return false;
+  }
+
+  return true;
 }
 
 WiFiCredentials PersistentStorage::loadCredentials() {
@@ -309,6 +340,99 @@ void PersistentStorage::clearNVS() {
   Serial.println("[OK] NVS cleared");
 }
 
+bool PersistentStorage::savePIDTuningsToNVS(double kp, double ki, double kd) {
+  nvs_handle_t handle = 0;
+  if (nvs_open(kConfigNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    Serial.println("[WARN] Failed to open config NVS for PID write");
+    return false;
+  }
+
+  bool ok = nvsSetString(handle, "pid_kp", String(kp, 4)) &&
+            nvsSetString(handle, "pid_ki", String(ki, 4)) &&
+            nvsSetString(handle, "pid_kd", String(kd, 4)) &&
+            nvsSetString(handle, "pid_marker", String("valid")) &&
+            nvs_commit(handle) == ESP_OK;
+
+  nvs_close(handle);
+
+  if (!ok) {
+    Serial.println("[WARN] Failed to save PID tunings to NVS");
+  }
+  return ok;
+}
+
+bool PersistentStorage::saveTempOffsetsToNVS(int pitOffset, int meatOffset) {
+  nvs_handle_t handle = 0;
+  if (nvs_open(kConfigNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+    Serial.println("[WARN] Failed to open config NVS for offset write");
+    return false;
+  }
+
+  bool ok = nvsSetString(handle, "pit_offset", String(pitOffset)) &&
+            nvsSetString(handle, "meat_offset", String(meatOffset)) &&
+            nvsSetString(handle, "offset_marker", String("valid")) &&
+            nvs_commit(handle) == ESP_OK;
+
+  nvs_close(handle);
+
+  if (!ok) {
+    Serial.println("[WARN] Failed to save probe calibration offsets to NVS");
+  }
+  return ok;
+}
+
+bool PersistentStorage::loadTempOffsetsFromNVS(int &pitOffset, int &meatOffset) {
+  nvs_handle_t handle = 0;
+  if (nvs_open(kConfigNamespace, NVS_READONLY, &handle) != ESP_OK) {
+    return false;
+  }
+
+  String marker = nvsGetString(handle, "offset_marker");
+  if (marker != "valid") {
+    nvs_close(handle);
+    return false;
+  }
+
+  String pitOffsetStr = nvsGetString(handle, "pit_offset");
+  String meatOffsetStr = nvsGetString(handle, "meat_offset");
+  nvs_close(handle);
+
+  if (pitOffsetStr.length() == 0 || meatOffsetStr.length() == 0) {
+    return false;
+  }
+
+  pitOffset = pitOffsetStr.toInt();
+  meatOffset = meatOffsetStr.toInt();
+  return true;
+}
+
+bool PersistentStorage::loadPIDTuningsFromNVS(double &kp, double &ki, double &kd) {
+  nvs_handle_t handle = 0;
+  if (nvs_open(kConfigNamespace, NVS_READONLY, &handle) != ESP_OK) {
+    return false;
+  }
+
+  String marker = nvsGetString(handle, "pid_marker");
+  if (marker != "valid") {
+    nvs_close(handle);
+    return false;
+  }
+
+  String kpStr = nvsGetString(handle, "pid_kp");
+  String kiStr = nvsGetString(handle, "pid_ki");
+  String kdStr = nvsGetString(handle, "pid_kd");
+  nvs_close(handle);
+
+  if (kpStr.length() == 0 || kiStr.length() == 0 || kdStr.length() == 0) {
+    return false;
+  }
+
+  kp = kpStr.toDouble();
+  ki = kiStr.toDouble();
+  kd = kdStr.toDouble();
+  return true;
+}
+
 String PersistentStorage::loadFirmwareVersion() {
   nvs_handle_t handle = 0;
   if (nvs_open("wifi", NVS_READONLY, &handle) != ESP_OK) {
@@ -343,18 +467,39 @@ void PersistentStorage::loadTempOffsets(int &pitOffset, int &meatOffset) {
   String pitStr = readFile(PATH_PIT_OFFSET);
   String meatStr = readFile(PATH_MEAT_OFFSET);
 
-  pitOffset = (pitStr.length() > 0) ? pitStr.toInt() : 0;
-  meatOffset = (meatStr.length() > 0) ? meatStr.toInt() : 0;
+  int filePitOffset = (pitStr.length() > 0) ? pitStr.toInt() : 0;
+  int fileMeatOffset = (meatStr.length() > 0) ? meatStr.toInt() : 0;
+
+  if (loadTempOffsetsFromNVS(pitOffset, meatOffset)) {
+    if (pitStr != String(pitOffset)) {
+      writeFile(PATH_PIT_OFFSET, String(pitOffset).c_str());
+    }
+    if (meatStr != String(meatOffset)) {
+      writeFile(PATH_MEAT_OFFSET, String(meatOffset).c_str());
+    }
+  } else {
+    pitOffset = filePitOffset;
+    meatOffset = fileMeatOffset;
+    saveTempOffsetsToNVS(pitOffset, meatOffset);
+  }
 
   Serial.printf("Loaded Calibration Offsets - Pit: %d, Meat: %d\n", pitOffset,
                 meatOffset);
 }
 
 void PersistentStorage::saveTempOffsets(int pitOffset, int meatOffset) {
-  writeFile(PATH_PIT_OFFSET, String(pitOffset).c_str());
-  writeFile(PATH_MEAT_OFFSET, String(meatOffset).c_str());
+  bool filesOk = true;
+  filesOk = writeFile(PATH_PIT_OFFSET, String(pitOffset).c_str()) && filesOk;
+  filesOk = writeFile(PATH_MEAT_OFFSET, String(meatOffset).c_str()) && filesOk;
+
+  bool nvsOk = saveTempOffsetsToNVS(pitOffset, meatOffset);
+
   Serial.printf("[OK] Saved Offsets - Pit: %d, Meat: %d\n", pitOffset,
                 meatOffset);
+  if (!filesOk || !nvsOk) {
+    Serial.printf("[WARN] Offset persistence partial failure (files=%s, nvs=%s)\n",
+                  filesOk ? "ok" : "failed", nvsOk ? "ok" : "failed");
+  }
 }
 
 void PersistentStorage::loadPIDTunings(double &kp, double &ki, double &kd) {
@@ -362,20 +507,44 @@ void PersistentStorage::loadPIDTunings(double &kp, double &ki, double &kd) {
   String kiStr = readFile(PATH_PID_KI);
   String kdStr = readFile(PATH_PID_KD);
 
-  kp = (kpStr.length() > 0) ? kpStr.toDouble() : PID_KP;
-  ki = (kiStr.length() > 0) ? kiStr.toDouble() : PID_KI;
-  kd = (kdStr.length() > 0) ? kdStr.toDouble() : PID_KD;
+  double fileKp = (kpStr.length() > 0) ? kpStr.toDouble() : PID_KP;
+  double fileKi = (kiStr.length() > 0) ? kiStr.toDouble() : PID_KI;
+  double fileKd = (kdStr.length() > 0) ? kdStr.toDouble() : PID_KD;
+
+  if (loadPIDTuningsFromNVS(kp, ki, kd)) {
+    if (kpStr != String(kp, 2)) {
+      writeFile(PATH_PID_KP, String(kp, 2).c_str());
+    }
+    if (kiStr != String(ki, 2)) {
+      writeFile(PATH_PID_KI, String(ki, 2).c_str());
+    }
+    if (kdStr != String(kd, 2)) {
+      writeFile(PATH_PID_KD, String(kd, 2).c_str());
+    }
+  } else {
+    kp = fileKp;
+    ki = fileKi;
+    kd = fileKd;
+    savePIDTuningsToNVS(kp, ki, kd);
+  }
 
   Serial.printf("Loaded PID Tunings - Kp: %.2f, Ki: %.2f, Kd: %.2f\n", kp, ki,
                 kd);
 }
 
 void PersistentStorage::savePIDTunings(double kp, double ki, double kd) {
-  writeFile(PATH_PID_KP, String(kp, 2).c_str());
-  writeFile(PATH_PID_KI, String(ki, 2).c_str());
-  writeFile(PATH_PID_KD, String(kd, 2).c_str());
+  bool filesOk = true;
+  filesOk = writeFile(PATH_PID_KP, String(kp, 2).c_str()) && filesOk;
+  filesOk = writeFile(PATH_PID_KI, String(ki, 2).c_str()) && filesOk;
+  filesOk = writeFile(PATH_PID_KD, String(kd, 2).c_str()) && filesOk;
+
+  bool nvsOk = savePIDTuningsToNVS(kp, ki, kd);
   Serial.printf("[OK] Saved PID Tunings - Kp: %.2f, Ki: %.2f, Kd: %.2f\n", kp,
                 ki, kd);
+  if (!filesOk || !nvsOk) {
+    Serial.printf("[WARN] PID persistence partial failure (files=%s, nvs=%s)\n",
+                  filesOk ? "ok" : "failed", nvsOk ? "ok" : "failed");
+  }
 }
 
 double PersistentStorage::loadMeatSetpoint() {
@@ -409,6 +578,91 @@ String PersistentStorage::loadTimezone() {
 void PersistentStorage::saveTimezone(const String &tz) {
   writeFile(PATH_TIMEZONE, tz.c_str());
   Serial.printf("[OK] Saved Timezone: %s\n", tz.c_str());
+}
+
+bool PersistentStorage::saveHistorySnapshot(const std::string &data) {
+  if (!mounted) {
+    Serial.println("[ERROR] LittleFS not mounted");
+    return false;
+  }
+
+  std::string fullPath = buildPath(PATH_HISTORY_SNAPSHOT);
+  std::string tempPath = buildTempPath(PATH_HISTORY_SNAPSHOT);
+
+  FILE *file = fopen(tempPath.c_str(), "wb");
+  if (!file) {
+    Serial.printf("[ERROR] Failed to open history snapshot for writing: %s\n",
+                  tempPath.c_str());
+    return false;
+  }
+
+  if (!data.empty() &&
+      fwrite(data.data(), 1, data.size(), file) != data.size()) {
+    fclose(file);
+    unlink(tempPath.c_str());
+    Serial.println("[ERROR] Failed to write history snapshot");
+    return false;
+  }
+
+  fflush(file);
+  fsync(fileno(file));
+  fclose(file);
+
+  if (rename(tempPath.c_str(), fullPath.c_str()) != 0) {
+    unlink(tempPath.c_str());
+    Serial.println("[ERROR] Failed to replace history snapshot");
+    return false;
+  }
+
+  Serial.printf("[OK] Saved history snapshot (%u bytes)\n",
+                static_cast<unsigned>(data.size()));
+  return true;
+}
+
+std::string PersistentStorage::loadHistorySnapshot() {
+  if (!mounted) {
+    Serial.println("[ERROR] LittleFS not mounted");
+    return std::string();
+  }
+
+  std::string fullPath = buildPath(PATH_HISTORY_SNAPSHOT);
+  FILE *file = fopen(fullPath.c_str(), "rb");
+  if (!file) {
+    return std::string();
+  }
+
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    return std::string();
+  }
+
+  long fileSize = ftell(file);
+  if (fileSize < 0 || fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file);
+    return std::string();
+  }
+
+  std::string data(static_cast<size_t>(fileSize), '\0');
+  if (!data.empty() && fread(data.data(), 1, data.size(), file) != data.size()) {
+    fclose(file);
+    return std::string();
+  }
+
+  fclose(file);
+  Serial.printf("[OK] Loaded history snapshot (%u bytes)\n",
+                static_cast<unsigned>(data.size()));
+  return data;
+}
+
+void PersistentStorage::clearHistorySnapshot() {
+  if (!mounted) {
+    return;
+  }
+
+  std::string fullPath = buildPath(PATH_HISTORY_SNAPSHOT);
+  if (unlink(fullPath.c_str()) == 0) {
+    Serial.println("[OK] Cleared history snapshot");
+  }
 }
 
 void PersistentStorage::listAllFiles() {

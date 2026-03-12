@@ -25,6 +25,19 @@ bool s_initialized = false;
 bool s_mdnsInitialized = false;
 int s_lastDisconnectReason = 0;
 
+void updateMdnsForNetif(esp_netif_t *netif, mdns_event_actions_t actions,
+                        const char *label) {
+  if (!s_mdnsInitialized || netif == nullptr) {
+    return;
+  }
+
+  esp_err_t err = mdns_netif_action(netif, actions);
+  if (err != ESP_OK) {
+    Serial.printf("[WARN] mDNS netif action failed for %s: %s\n", label,
+                  esp_err_to_name(err));
+  }
+}
+
 const char *wifiDisconnectReasonToString(int reason) {
   switch (reason) {
     case WIFI_REASON_AUTH_EXPIRE:
@@ -118,6 +131,10 @@ void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id,
       Serial.printf("[WIFI] STA got IP: %s\n",
             ip4addr_ntoa(reinterpret_cast<ip4_addr_t *>(&got_ip->ip_info.ip)));
     }
+    updateMdnsForNetif(s_staNetif,
+                       static_cast<mdns_event_actions_t>(MDNS_EVENT_ENABLE_IP4 |
+                                                         MDNS_EVENT_ANNOUNCE_IP4),
+                       "STA");
     xEventGroupSetBits(s_wifiEventGroup, kConnectedBit);
   }
 }
@@ -175,6 +192,10 @@ void configureApIp() {
   esp_netif_dhcps_stop(s_apNetif);
   esp_netif_set_ip_info(s_apNetif, &ip_info);
   esp_netif_dhcps_start(s_apNetif);
+  updateMdnsForNetif(s_apNetif,
+                     static_cast<mdns_event_actions_t>(MDNS_EVENT_ENABLE_IP4 |
+                                                       MDNS_EVENT_ANNOUNCE_IP4),
+                     "AP");
   Serial.println("[WIFI] AP IP configured: 192.168.4.1");
 }
 
@@ -234,6 +255,8 @@ NetworkMode NetworkManager::begin(const WiFiCredentials &creds) {
     return NetworkMode::NONE;
   }
 
+  ensureMdns("smoker");
+
   if (credentials.isEmpty()) {
     Serial.println("[INFO] No WiFi credentials found");
     Serial.println("[INFO] Starting AP mode for configuration...");
@@ -267,9 +290,11 @@ bool NetworkManager::connectSTA() {
 
   wifi_config_t wifi_config{};
   std::strncpy(reinterpret_cast<char *>(wifi_config.sta.ssid),
-               credentials.ssid.c_str(), sizeof(wifi_config.sta.ssid));
+               credentials.ssid.c_str(), sizeof(wifi_config.sta.ssid) - 1);
   std::strncpy(reinterpret_cast<char *>(wifi_config.sta.password),
-               credentials.password.c_str(), sizeof(wifi_config.sta.password));
+               credentials.password.c_str(), sizeof(wifi_config.sta.password) - 1);
+  wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
+  wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0';
 
   if (credentials.useDHCP) {
     Serial.println("[INFO] Using DHCP for IP assignment");
@@ -329,7 +354,6 @@ bool NetworkManager::connectSTA() {
       if (bits & kConnectedBit) {
         Serial.println("\n[OK] WiFi connected!");
         startFallbackAP();
-        ensureMdns("smoker");
         return true;
       }
 
@@ -351,9 +375,11 @@ bool NetworkManager::connectSTA() {
 bool NetworkManager::startFallbackAP() {
   wifi_config_t ap_config{};
   std::strncpy(reinterpret_cast<char *>(ap_config.ap.ssid), AP_SSID,
-               sizeof(ap_config.ap.ssid));
+               sizeof(ap_config.ap.ssid) - 1);
   std::strncpy(reinterpret_cast<char *>(ap_config.ap.password), AP_PASSWORD,
-               sizeof(ap_config.ap.password));
+               sizeof(ap_config.ap.password) - 1);
+  ap_config.ap.ssid[sizeof(ap_config.ap.ssid) - 1] = '\0';
+  ap_config.ap.password[sizeof(ap_config.ap.password) - 1] = '\0';
   ap_config.ap.ssid_len = std::strlen(AP_SSID);
   ap_config.ap.channel = 1;
   ap_config.ap.max_connection = 4;
@@ -371,9 +397,11 @@ bool NetworkManager::startFallbackAP() {
 bool NetworkManager::startAP() {
   wifi_config_t ap_config{};
   std::strncpy(reinterpret_cast<char *>(ap_config.ap.ssid), AP_SSID,
-               sizeof(ap_config.ap.ssid));
+               sizeof(ap_config.ap.ssid) - 1);
   std::strncpy(reinterpret_cast<char *>(ap_config.ap.password), AP_PASSWORD,
-               sizeof(ap_config.ap.password));
+               sizeof(ap_config.ap.password) - 1);
+  ap_config.ap.ssid[sizeof(ap_config.ap.ssid) - 1] = '\0';
+  ap_config.ap.password[sizeof(ap_config.ap.password) - 1] = '\0';
   ap_config.ap.ssid_len = std::strlen(AP_SSID);
   ap_config.ap.channel = 1;
   ap_config.ap.max_connection = 4;
@@ -398,7 +426,6 @@ bool NetworkManager::startAP() {
     return false;
   }
   configureApIp();
-  ensureMdns("smoker");
   Serial.printf("[WIFI] AP SSID: %s (%s)\n", AP_SSID,
                 (std::strlen(AP_PASSWORD) == 0) ? "OPEN" : "WPA2");
   Serial.println("[OK] AP mode started successfully");
@@ -480,480 +507,3 @@ bool NetworkManager::isScannedNetworkOpen(int index) {
   }
   return scannedNetworks[index].authmode == WIFI_AUTH_OPEN;
 }
-
-#if 0
-#include "network_manager.h"
-#include <ESPmDNS.h>
-
-// =============================================================================
-// NETWORK MANAGER IMPLEMENTATION
-// =============================================================================
-
-NetworkMode NetworkManager::begin(const WiFiCredentials &creds) {
-  credentials = creds;
-
-  // Check if credentials are valid
-  if (credentials.isEmpty()) {
-    Serial.println("[INFO] No WiFi credentials found");
-    Serial.println("[INFO] Starting AP mode for configuration...");
-    if (startAP()) {
-      currentMode = NetworkMode::AP;
-      return NetworkMode::AP;
-    }
-    currentMode = NetworkMode::NONE;
-    return NetworkMode::NONE;
-  }
-
-  // Try to connect in STA mode
-  if (connectSTA()) {
-    currentMode = NetworkMode::STA;
-    return NetworkMode::STA;
-  }
-
-  // STA failed, fall back to AP mode
-  Serial.println("[WARN] STA connection failed, starting AP mode...");
-  if (startAP()) {
-    currentMode = NetworkMode::AP;
-    return NetworkMode::AP;
-  }
-
-  currentMode = NetworkMode::NONE;
-  return NetworkMode::NONE;
-}
-
-bool NetworkManager::connectSTA() {
-  Serial.println("\n===========================================");
-  Serial.println("Connecting to WiFi (STA mode)");
-  Serial.println("===========================================");
-
-  // Configure WiFi mode
-  WiFi.mode(WIFI_AP_STA);
-
-  // Conditional IP configuration based on DHCP preference
-  if (credentials.useDHCP) {
-    // DHCP mode - let router assign IP
-    Serial.println("[INFO] Using DHCP for IP assignment");
-    // No WiFi.config() call - ESP32 uses DHCP by default
-  } else {
-    // Static IP mode
-    Serial.println("[INFO] Using static IP configuration");
-
-    // Parse IP addresses
-    if (!localIP.fromString(credentials.ip.c_str())) {
-      Serial.println("[ERROR] Invalid IP address format");
-      return false;
-    }
-
-    if (!localGateway.fromString(credentials.gateway.c_str())) {
-      Serial.println("[ERROR] Invalid gateway address format");
-      return false;
-    }
-
-    // Parse subnet mask (default)
-    subnet.fromString(DEFAULT_SUBNET_MASK);
-
-    // Configure static IP
-    if (!WiFi.config(localIP, localGateway, subnet)) {
-      Serial.println("[ERROR] WiFi static IP configuration failed");
-      return false;
-    }
-  }
-
-  // Begin WiFi connection (same for both modes)
-  WiFi.begin(credentials.ssid.c_str(), credentials.password.c_str());
-  Serial.printf("Connecting to SSID: %s\n", credentials.ssid.c_str());
-
-  // Wait for connection with timeout
-  unsigned long startTime = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - startTime >= WIFI_TIMEOUT_MS) {
-      Serial.println("[ERROR] WiFi connection timeout");
-      WiFi.disconnect();
-      return false;
-    }
-    delay(100);
-    Serial.print(".");
-  }
-
-  Serial.println("\n[OK] WiFi connected!");
-  Serial.printf("  SSID: %s\n", WiFi.SSID().c_str());
-  Serial.printf("  IP Address: %s\n", WiFi.localIP().toString().c_str());
-  Serial.printf("  Gateway: %s\n", WiFi.gatewayIP().toString().c_str());
-  Serial.printf("  RSSI: %d dBm\n", WiFi.RSSI());
-
-  // Start fallback AP for recovery access
-  startFallbackAP();
-
-  // Start mDNS responder
-  if (MDNS.begin("smoker")) {
-    Serial.println("[OK] mDNS responder started");
-    Serial.println("  Access device at: https://smoker.local");
-    MDNS.addService("https", "tcp", 443);
-  }
-
-  return true;
-}
-
-bool NetworkManager::startFallbackAP() {
-  // Ensure AP has a stable IP configuration
-  IPAddress apIP(192, 168, 4, 1);
-  IPAddress apGW(192, 168, 4, 1);
-  IPAddress apSN(255, 255, 255, 0);
-  WiFi.softAPConfig(apIP, apGW, apSN);
-
-  bool success = WiFi.softAP(AP_SSID, AP_PASSWORD, 1, 0, 4);
-  #include "network_manager.h"
-  #include "config/network_config.h"
-  #include "compat/compat.h"
-  #include "esp_event.h"
-  #include "esp_netif.h"
-  #include "esp_wifi.h"
-  #include "freertos/event_groups.h"
-  #include "mdns.h"
-
-  // =============================================================================
-  // NETWORK MANAGER IMPLEMENTATION (ESP-IDF)
-  // =============================================================================
-
-  namespace {
-  constexpr EventBits_t kConnectedBit = BIT0;
-  constexpr EventBits_t kFailBit = BIT1;
-  EventGroupHandle_t s_wifiEventGroup = nullptr;
-  esp_netif_t *s_staNetif = nullptr;
-  esp_netif_t *s_apNetif = nullptr;
-
-  void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-      xEventGroupSetBits(s_wifiEventGroup, kFailBit);
-    }
-    if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-      xEventGroupSetBits(s_wifiEventGroup, kConnectedBit);
-    }
-  }
-
-  NetworkMode NetworkManager::begin(const WiFiCredentials &creds) {
-    credentials = creds;
-
-    #include "network_manager.h"
-    #include "config/network_config.h"
-    #include "compat/compat.h"
-    #include "esp_event.h"
-    #include "esp_netif.h"
-    #include "esp_wifi.h"
-    #include "freertos/event_groups.h"
-    #include "mdns.h"
-    #include <cstring>
-
-    // =============================================================================
-    // NETWORK MANAGER IMPLEMENTATION (ESP-IDF)
-    // =============================================================================
-
-    namespace {
-    constexpr EventBits_t kConnectedBit = BIT0;
-    constexpr EventBits_t kFailBit = BIT1;
-    EventGroupHandle_t s_wifiEventGroup = nullptr;
-    esp_netif_t *s_staNetif = nullptr;
-    esp_netif_t *s_apNetif = nullptr;
-
-    void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id,
-                          void *event_data) {
-      if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        xEventGroupSetBits(s_wifiEventGroup, kFailBit);
-      }
-      if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        xEventGroupSetBits(s_wifiEventGroup, kConnectedBit);
-      }
-    }
-    } // namespace
-      credentials = creds;
-
-      esp_netif_init();
-      esp_event_loop_create_default();
-
-      if (!s_staNetif) {
-        s_staNetif = esp_netif_create_default_wifi_sta();
-      }
-      if (!s_apNetif) {
-        s_apNetif = esp_netif_create_default_wifi_ap();
-      }
-
-      wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-      esp_wifi_init(&cfg);
-
-      if (!s_wifiEventGroup) {
-        s_wifiEventGroup = xEventGroupCreate();
-      }
-
-      esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifiEventHandler,
-                                 nullptr);
-      esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifiEventHandler,
-                                 nullptr);
-
-      if (credentials.isEmpty()) {
-        Serial.println("[INFO] No WiFi credentials found");
-        Serial.println("[INFO] Starting AP mode for configuration...");
-        if (startAP()) {
-          currentMode = NetworkMode::AP;
-          return currentMode;
-        }
-        currentMode = NetworkMode::NONE;
-        return currentMode;
-      }
-
-      if (connectSTA()) {
-        currentMode = NetworkMode::STA;
-        return currentMode;
-      }
-
-      Serial.println("[WARN] STA connection failed, starting AP mode...");
-      if (startAP()) {
-        currentMode = NetworkMode::AP;
-        return currentMode;
-      }
-
-      currentMode = NetworkMode::NONE;
-      return currentMode;
-    }
-
-    bool NetworkManager::connectSTA() {
-      Serial.println("\n===========================================");
-      Serial.println("Connecting to WiFi (STA mode)");
-      Serial.println("===========================================");
-
-      esp_wifi_set_mode(WIFI_MODE_APSTA);
-
-      if (!credentials.useDHCP) {
-        Serial.println("[INFO] Using static IP configuration");
-        esp_netif_dhcpc_stop(s_staNetif);
-
-        ip4_addr_t ip{};
-        ip4_addr_t gw{};
-        ip4_addr_t mask{};
-        if (!ip4addr_aton(credentials.ip.c_str(), &ip) ||
-            !ip4addr_aton(credentials.gateway.c_str(), &gw) ||
-            !ip4addr_aton(DEFAULT_SUBNET_MASK, &mask)) {
-          Serial.println("[ERROR] Invalid IP configuration");
-          return false;
-        }
-
-        esp_netif_ip_info_t ip_info{};
-        ip_info.ip = ip;
-        ip_info.gw = gw;
-        ip_info.netmask = mask;
-        esp_netif_set_ip_info(s_staNetif, &ip_info);
-      } else {
-        Serial.println("[INFO] Using DHCP for IP assignment");
-        esp_netif_dhcpc_start(s_staNetif);
-      }
-
-      wifi_config_t sta_config{};
-      std::strncpy(reinterpret_cast<char *>(sta_config.sta.ssid),
-                   credentials.ssid.c_str(), sizeof(sta_config.sta.ssid) - 1);
-      std::strncpy(reinterpret_cast<char *>(sta_config.sta.password),
-                   credentials.password.c_str(),
-                   sizeof(sta_config.sta.password) - 1);
-      sta_config.sta.pmf_cfg.capable = true;
-      sta_config.sta.pmf_cfg.required = false;
-    #if defined(WIFI_AUTH_WPA2_WPA3_PSK)
-      sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
-    #else
-      sta_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
-    #endif
-    #if defined(WPA3_SAE_PWE_BOTH)
-      sta_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
-    #elif defined(WIFI_SAE_PWE_BOTH)
-      sta_config.sta.sae_pwe_h2e = WIFI_SAE_PWE_BOTH;
-    #endif
-
-      esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-      esp_wifi_start();
-      esp_wifi_connect();
-
-      Serial.printf("Connecting to SSID: %s\n", credentials.ssid.c_str());
-
-      EventBits_t bits = xEventGroupWaitBits(
-          s_wifiEventGroup, kConnectedBit | kFailBit, pdTRUE, pdFALSE,
-          pdMS_TO_TICKS(WIFI_TIMEOUT_MS));
-
-      if (bits & kConnectedBit) {
-        Serial.println("\n[OK] WiFi connected!");
-        startFallbackAP();
-        ensureMdns("smoker");
-        return true;
-      }
-
-      Serial.println("[ERROR] WiFi connection timeout");
-      esp_wifi_disconnect();
-      return false;
-    }
-
-    bool NetworkManager::startFallbackAP() {
-      esp_wifi_set_mode(WIFI_MODE_APSTA);
-
-      wifi_config_t ap_config{};
-      std::strncpy(reinterpret_cast<char *>(ap_config.ap.ssid), AP_SSID,
-                   sizeof(ap_config.ap.ssid) - 1);
-      std::strncpy(reinterpret_cast<char *>(ap_config.ap.password), AP_PASSWORD,
-                   sizeof(ap_config.ap.password) - 1);
-      ap_config.ap.channel = 1;
-      ap_config.ap.max_connection = 4;
-      ap_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-      if (std::strlen(AP_PASSWORD) == 0) {
-        ap_config.ap.authmode = WIFI_AUTH_OPEN;
-      }
-
-      esp_netif_dhcps_stop(s_apNetif);
-      esp_netif_ip_info_t ip_info{};
-      ip4addr_aton("192.168.4.1", &ip_info.ip);
-      ip4addr_aton("192.168.4.1", &ip_info.gw);
-      ip4addr_aton("255.255.255.0", &ip_info.netmask);
-      esp_netif_set_ip_info(s_apNetif, &ip_info);
-      esp_netif_dhcps_start(s_apNetif);
-
-      esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-      Serial.println("[OK] Fallback AP started (STA+AP) for recovery access");
-      return true;
-    }
-
-    bool NetworkManager::startAP() {
-      Serial.println("\n===========================================");
-      Serial.println("Starting Access Point (AP mode)");
-      Serial.println("===========================================");
-
-      scanNetworks();
-
-      esp_wifi_set_mode(WIFI_MODE_AP);
-
-      wifi_config_t ap_config{};
-      std::strncpy(reinterpret_cast<char *>(ap_config.ap.ssid), AP_SSID,
-                   sizeof(ap_config.ap.ssid) - 1);
-      std::strncpy(reinterpret_cast<char *>(ap_config.ap.password), AP_PASSWORD,
-                   sizeof(ap_config.ap.password) - 1);
-      ap_config.ap.channel = 1;
-      ap_config.ap.max_connection = 4;
-      ap_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
-      if (std::strlen(AP_PASSWORD) == 0) {
-        ap_config.ap.authmode = WIFI_AUTH_OPEN;
-      }
-
-      esp_netif_dhcps_stop(s_apNetif);
-      esp_netif_ip_info_t ip_info{};
-      ip4addr_aton("192.168.4.1", &ip_info.ip);
-      ip4addr_aton("192.168.4.1", &ip_info.gw);
-      ip4addr_aton("255.255.255.0", &ip_info.netmask);
-      esp_netif_set_ip_info(s_apNetif, &ip_info);
-      esp_netif_dhcps_start(s_apNetif);
-
-      esp_wifi_set_config(WIFI_IF_AP, &ap_config);
-      esp_wifi_start();
-      ensureMdns("smoker");
-      Serial.println("[OK] Access Point started!");
-      return true;
-    }
-
-    bool NetworkManager::isConnected() const {
-      return currentMode == NetworkMode::STA;
-    }
-
-    IPAddress NetworkManager::getLocalIP() const {
-      esp_netif_ip_info_t ip_info{};
-      if (currentMode == NetworkMode::STA && s_staNetif) {
-        if (esp_netif_get_ip_info(s_staNetif, &ip_info) == ESP_OK) {
-          return IPAddress(ip4_addr1(&ip_info.ip), ip4_addr2(&ip_info.ip),
-                           ip4_addr3(&ip_info.ip), ip4_addr4(&ip_info.ip));
-        }
-      }
-      if (currentMode == NetworkMode::AP && s_apNetif) {
-        if (esp_netif_get_ip_info(s_apNetif, &ip_info) == ESP_OK) {
-          return IPAddress(ip4_addr1(&ip_info.ip), ip4_addr2(&ip_info.ip),
-                           ip4_addr3(&ip_info.ip), ip4_addr4(&ip_info.ip));
-        }
-      }
-      return IPAddress(0, 0, 0, 0);
-    }
-
-    String NetworkManager::getSSID() const {
-      wifi_ap_record_t ap_info{};
-      if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        return String(reinterpret_cast<const char *>(ap_info.ssid));
-      }
-      return String();
-    }
-
-    int NetworkManager::getRSSI() const {
-      wifi_ap_record_t ap_info{};
-      if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        return ap_info.rssi;
-      }
-      return 0;
-    }
-
-    int NetworkManager::scanNetworks() {
-      Serial.println("[INFO] Scanning for WiFi networks...");
-
-      wifi_scan_config_t scan_config{};
-      scan_config.show_hidden = true;
-      esp_wifi_scan_start(&scan_config, true);
-
-      uint16_t count = 0;
-      esp_wifi_scan_get_ap_num(&count);
-      scannedNetworks.resize(count);
-      if (count > 0) {
-        esp_wifi_scan_get_ap_records(&count, scannedNetworks.data());
-      }
-
-      Serial.printf("[INFO] Scan complete. Found %d networks\n",
-                    static_cast<int>(count));
-      return static_cast<int>(count);
-    }
-
-    String NetworkManager::getScannedSSID(int index) {
-      if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-        return String();
-      }
-      return String(reinterpret_cast<const char *>(scannedNetworks[index].ssid));
-    }
-
-    int NetworkManager::getScannedRSSI(int index) {
-      if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-        return 0;
-      }
-      return scannedNetworks[index].rssi;
-    }
-
-    bool NetworkManager::isScannedNetworkOpen(int index) {
-      if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-        return false;
-      }
-      return scannedNetworks[index].authmode == WIFI_AUTH_OPEN;
-    }
-    if (count > 0) {
-      esp_wifi_scan_get_ap_records(&count, scannedNetworks.data());
-    }
-
-    Serial.printf("[INFO] Scan complete. Found %d networks\n", static_cast<int>(count));
-    return static_cast<int>(count);
-  }
-
-  String NetworkManager::getScannedSSID(int index) {
-    if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-      return String();
-    }
-    return String(reinterpret_cast<const char *>(scannedNetworks[index].ssid));
-  }
-
-  int NetworkManager::getScannedRSSI(int index) {
-    if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-      return 0;
-    }
-    return scannedNetworks[index].rssi;
-  }
-
-  bool NetworkManager::isScannedNetworkOpen(int index) {
-    if (index < 0 || index >= static_cast<int>(scannedNetworks.size())) {
-      return false;
-    }
-    return scannedNetworks[index].authmode == WIFI_AUTH_OPEN;
-  }
-
-#endif

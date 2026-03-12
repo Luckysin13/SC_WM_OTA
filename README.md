@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# SC_WM_OTA
-Over The Air Firmware Updates
-=======
 # SC_WM OTA (Over-The-Air) Firmware Repository
 
 Official firmware release repository for the Smoker Controller - WiFi Module (SC_WM).
@@ -149,4 +145,3 @@ Firmware and OTA repository structure are part of the SC_WM project.
 
 **Last Updated**: 2026-01-16
 **Repository**: https://github.com/Luckysin13/SC_WM_OTA
->>>>>>> 1e26b57 (Initial OTA release v1.0.0 with firmware binaries)

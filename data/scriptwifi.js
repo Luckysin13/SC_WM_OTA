@@ -108,6 +108,14 @@ function hidePass() {
 // =============================================================================
 // NETWORK SCANNING
 // =============================================================================
+function setScanButtonEnabled(scanButton, enabled) {
+    if (!scanButton) return;
+
+    scanButton.disabled = !enabled;
+    scanButton.style.opacity = enabled ? '1' : '0.5';
+    scanButton.style.cursor = enabled ? 'pointer' : 'not-allowed';
+}
+
 function scanAndPopulateNetworks() {
     const ssidInput = document.getElementById('ssid');
     const ssidDatalist = document.getElementById('ssid-list');
@@ -115,6 +123,7 @@ function scanAndPopulateNetworks() {
     const scanText = document.getElementById('scan-text');
     const scanStatus = document.getElementById('scan-status');
     const scanButton = document.querySelector('button[onclick="scanAndPopulateNetworks()"]');
+    let currentStatus = null;
 
     if (!ssidInput || !ssidDatalist) return;
 
@@ -136,37 +145,36 @@ function scanAndPopulateNetworks() {
         })
         .then(statusData => {
             console.log('[WiFi] Device status:', statusData);
+            currentStatus = statusData;
 
             // Update WiFi display
             updateWiFiDisplay(statusData);
 
             // Check if we're in STA mode
             if (statusData.mode === 'STA' && statusData.connected) {
-                // STA mode - show current connection but allow scanning
-                console.log('[WiFi] STA mode detected - showing current connection');
+                console.log('[WiFi] STA mode detected - scan disabled while connected');
 
                 // Pre-populate the input with current SSID
                 ssidInput.value = statusData.ssid;
+                scanIcon.textContent = '';
+                scanText.textContent = `SSID: ${statusData.ssid} - IP: ${statusData.ip}`;
+                scanStatus.style.color = 'var(--text-muted)';
+                setScanButtonEnabled(scanButton, false);
+                return { networks: [] };
             }
 
-            // Proceed with network scan (both AP and STA modes)
             console.log('[WiFi] Scanning for networks...');
             scanIcon.textContent = '🔍';
-            scanText.textContent = statusData.mode === 'STA'
-                ? `Currently: ${statusData.ssid} - IP: ${statusData.ip} | Scanning...`
-                : 'Scanning...';
-
-            // Ensure scan button is enabled
-            if (scanButton) {
-                scanButton.disabled = false;
-                scanButton.style.opacity = '1';
-                scanButton.style.cursor = 'pointer';
-            }
+            scanText.textContent = 'Scanning...';
+            setScanButtonEnabled(scanButton, true);
 
             // Fetch networks from API
             return fetch('/api/networks');
         })
         .then(response => {
+            if (!response || typeof response.json !== 'function') {
+                return response || { networks: [] };
+            }
             if (!response.ok) {
                 throw new Error('Network scan failed');
             }
@@ -200,10 +208,10 @@ function scanAndPopulateNetworks() {
                 scanText.textContent = `Found ${data.networks.length} network(s) - type or select`;
                 scanStatus.style.color = 'var(--accent-green)';
             } else {
-                // No networks found - check if we're in STA mode
-                if (statusData && statusData.mode === 'STA' && statusData.connected) {
-                    scanIcon.textContent = 'ℹ';
-                    scanText.textContent = 'Scan disabled in STA mode - enter SSID manually';
+                // No networks found - keep STA status informative instead of showing a manual-entry error
+                if (currentStatus && currentStatus.mode === 'STA' && currentStatus.connected) {
+                    scanIcon.textContent = '';
+                    scanText.textContent = `SSID: ${currentStatus.ssid} - IP: ${currentStatus.ip}`;
                     scanStatus.style.color = 'var(--text-muted)';
                 } else {
                     scanIcon.textContent = '⚠';
@@ -215,10 +223,19 @@ function scanAndPopulateNetworks() {
         .catch(error => {
             console.error('[WiFi] Error:', error);
 
-            // Show error state
+            if (currentStatus && currentStatus.mode === 'STA' && currentStatus.connected) {
+                scanIcon.textContent = '';
+                scanText.textContent = `SSID: ${currentStatus.ssid} - IP: ${currentStatus.ip}`;
+                scanStatus.style.color = 'var(--text-muted)';
+                setScanButtonEnabled(scanButton, false);
+                return;
+            }
+
+            // Show error state only when we do not have an active STA connection to display
             scanIcon.textContent = '✗';
             scanText.textContent = 'Error - enter manually';
             scanStatus.style.color = 'var(--accent-red)';
+            setScanButtonEnabled(scanButton, true);
         });
 }
 

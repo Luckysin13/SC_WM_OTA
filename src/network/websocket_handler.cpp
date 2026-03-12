@@ -1,11 +1,15 @@
 #include "websocket_handler.h"
 #include "control/pid_autotuner.h"
+#include "config/control_config.h"
 #include "control/temperature_controller.h"
 #include "hardware/temperature.h"
 #include "network/ota_updater.h"
 #include "storage/persistent_storage.h"
 #include "utils/time_sync.h"
 #include <algorithm>
+#include <cerrno>
+#include <cmath>
+#include <limits>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -26,6 +30,114 @@ extern void requestTimezoneChange(const String &tz);
 
 namespace {
 TaskHandle_t otaTaskHandle = nullptr;
+constexpr int kMinPitSetpoint = 150;
+constexpr int kMaxPitSetpoint = 500;
+constexpr int kMinMeatSetpoint = 80;
+constexpr int kMaxMeatSetpoint = 250;
+constexpr int kMinKeepWarmSetpoint = 120;
+constexpr int kMaxKeepWarmSetpoint = 250;
+constexpr int kMinProbeOffset = -50;
+constexpr int kMaxProbeOffset = 50;
+constexpr size_t kMaxTimezoneLength = 63;
+constexpr size_t kHistoryChunkPoints = 120;
+constexpr double kMinPidGain = 0.0;
+constexpr double kMaxPidGain = 1000.0;
+
+String escapeJsonString(const String &input) {
+  std::string escaped;
+  escaped.reserve(input.length() + 8);
+  for (char ch : input.str()) {
+    switch (ch) {
+    case '\\':
+      escaped += "\\\\";
+      break;
+    case '"':
+      escaped += "\\\"";
+      break;
+    case '\b':
+      escaped += "\\b";
+      break;
+    case '\f':
+      escaped += "\\f";
+      break;
+    case '\n':
+      escaped += "\\n";
+      break;
+    case '\r':
+      escaped += "\\r";
+      break;
+    case '\t':
+      escaped += "\\t";
+      break;
+    default:
+      if (static_cast<unsigned char>(ch) < 0x20) {
+        char buffer[7];
+        snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(ch));
+        escaped += buffer;
+      } else {
+        escaped.push_back(ch);
+      }
+      break;
+    }
+  }
+  return String(escaped);
+}
+
+bool parseStrictInt(const String &value, int &out) {
+  std::string raw = value.str();
+  if (raw.empty()) {
+    return false;
+  }
+  char *end = nullptr;
+  errno = 0;
+  long parsed = std::strtol(raw.c_str(), &end, 10);
+  if (errno != 0 || end == raw.c_str() || *end != '\0' ||
+      parsed < std::numeric_limits<int>::min() ||
+      parsed > std::numeric_limits<int>::max()) {
+    return false;
+  }
+  out = static_cast<int>(parsed);
+  return true;
+}
+
+bool parseStrictDouble(const String &value, double &out) {
+  std::string raw = value.str();
+  if (raw.empty()) {
+    return false;
+  }
+  char *end = nullptr;
+  errno = 0;
+  double parsed = std::strtod(raw.c_str(), &end);
+  if (errno != 0 || end == raw.c_str() || *end != '\0' || !std::isfinite(parsed)) {
+    return false;
+  }
+  out = parsed;
+  return true;
+}
+
+int clampInt(int value, int minValue, int maxValue) {
+  return std::max(minValue, std::min(value, maxValue));
+}
+
+double clampDouble(double value, double minValue, double maxValue) {
+  return std::max(minValue, std::min(value, maxValue));
+}
+
+bool isBooleanString(const String &value) {
+  return value == "true" || value == "false";
+}
+
+bool isValidTimezoneValue(const String &value) {
+  if (value.isEmpty() || value.length() > kMaxTimezoneLength) {
+    return false;
+  }
+  for (char ch : value.str()) {
+    if (static_cast<unsigned char>(ch) < 0x20) {
+      return false;
+    }
+  }
+  return true;
+}
 
 void otaUpdateTask(void *param) {
   (void)param;
@@ -37,6 +149,8 @@ void otaUpdateTask(void *param) {
 
 WebSocketHandler::WebSocketHandler(StateCoordinator &coordinator)
     : stateCoord(coordinator) {}
+
+WebSocketHandler::~WebSocketHandler() { stateCoord.removeObserver(this); }
 
 void WebSocketHandler::init(httpd_handle_t httpdServer) {
   server = httpdServer;
@@ -81,7 +195,7 @@ esp_err_t WebSocketHandler::handleWs(httpd_req_t *req) {
     }
     buf[ws_pkt.len] = 0;
     String message(reinterpret_cast<char *>(buf.data()));
-    self->handleMessage(message);
+    self->handleMessage(message, httpd_req_to_sockfd(req));
   }
 
   return ESP_OK;
@@ -97,9 +211,37 @@ void WebSocketHandler::unregisterClient(int fd) {
   clientFds.erase(std::remove(clientFds.begin(), clientFds.end(), fd), clientFds.end());
 }
 
-void WebSocketHandler::handleMessage(const String &message) {
+void WebSocketHandler::sendToClient(int fd, const String &json) {
+  if (!server) {
+    return;
+  }
+
+  if (json.length() > 32768) {
+    Serial.println("[WebSocket] Warning: Message too large, skipping");
+    return;
+  }
+
+  httpd_ws_frame_t frame{};
+  frame.type = HTTPD_WS_TYPE_TEXT;
+  frame.payload = reinterpret_cast<uint8_t *>(const_cast<char *>(json.c_str()));
+  frame.len = json.length();
+
+  if (httpd_ws_send_frame_async(server, fd, &frame) != ESP_OK) {
+    unregisterClient(fd);
+  }
+}
+
+void WebSocketHandler::sendHistoryChunk(int fd, size_t start) {
+  sendToClient(fd, stateCoord.getHistoryChunkJSON(start, kHistoryChunkPoints));
+}
+
+void WebSocketHandler::handleMessage(const String &message, int clientFd) {
   if (message.startsWith("UpdateTimezone:")) {
     String newTz = message.substring(15);
+    if (!isValidTimezoneValue(newTz)) {
+      Serial.println("[WebSocket] Rejected invalid timezone update");
+      return;
+    }
     requestTimezoneChange(newTz);
     Serial.printf("[WebSocket] Updated Timezone: %s\n", newTz.c_str());
     updateClients();
@@ -109,8 +251,17 @@ void WebSocketHandler::handleMessage(const String &message) {
   Serial.printf("[WebSocket] Received: %s\n", message.c_str());
 
   if (message == "getHistory") {
-    String historyData = stateCoord.getHistory().getHistoryJSON();
-    updateClients(historyData);
+    sendHistoryChunk(clientFd, 0);
+    return;
+  }
+
+  if (message.startsWith("getHistoryChunk:")) {
+    int start = 0;
+    if (!parseStrictInt(message.substring(16), start) || start < 0) {
+      Serial.println("[WebSocket] Rejected invalid history chunk request");
+      return;
+    }
+    sendHistoryChunk(clientFd, static_cast<size_t>(start));
     return;
   }
 
@@ -161,10 +312,14 @@ void WebSocketHandler::handleMessage(const String &message) {
       storage.saveFirmwareVersion(otaUpdater.getAvailableVersion());
       otaUpdater.setCurrentVersion(otaUpdater.getAvailableVersion());
     }
-    otaJson += ",\"otaCurrentVersion\":\"" + reportedVersion + "\"";
+    otaJson += ",\"otaCurrentVersion\":\"" + escapeJsonString(reportedVersion) + "\"";
     String available = otaUpdater.getAvailableVersion();
     if (available.length() > 0) {
-      otaJson += ",\"otaAvailableVersion\":\"" + available + "\"";
+      otaJson += ",\"otaAvailableVersion\":\"" + escapeJsonString(available) + "\"";
+    }
+    String description = otaUpdater.getAvailableDescription();
+    if (description.length() > 0) {
+      otaJson += ",\"otaDescription\":\"" + escapeJsonString(description) + "\"";
     }
     if (otaUpdater.getStatus() == OTAUpdater::DOWNLOADING ||
       otaUpdater.getStatus() == OTAUpdater::INSTALLING) {
@@ -180,7 +335,7 @@ void WebSocketHandler::handleMessage(const String &message) {
       }
     }
     if (otaUpdater.getStatus() == OTAUpdater::FAILED) {
-      otaJson += ",\"otaError\":\"" + otaUpdater.getErrorMessage() + "\"";
+      otaJson += ",\"otaError\":\"" + escapeJsonString(otaUpdater.getErrorMessage()) + "\"";
     }
     otaJson += "}";
     updateClients(otaJson);
@@ -189,6 +344,12 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   if (message == "checkOTAUpdates") {
     otaUpdater.checkForUpdates();
+    return;
+  }
+
+  if (message == "cancelOTAUpdate") {
+    otaUpdater.cancelUpdate();
+    updateClients();
     return;
   }
 
@@ -202,17 +363,24 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   if (message.startsWith("FanMode:")) {
     String mode = message.substring(8);
-    ControllerState &ctrlState = stateCoord.getControllerMutable();
-    DisplayState &display = stateCoord.getDisplayMutable();
-
-    ctrlState.fanAuto = (mode == "auto");
-    display.fanAuto = ctrlState.fanAuto;
-
-    if (!ctrlState.fanAuto) {
-      ctrlState.pidOutput = 0;
-      ctrlState.fanPercent = 0;
-      display.updateFanSpeed(0);
+    if (mode == "off") {
+      mode = "manual";
     }
+    if (mode != "auto" && mode != "manual") {
+      Serial.printf("[WebSocket] Rejected invalid fan mode: %s\n", mode.c_str());
+      return;
+    }
+    stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                             DisplayState &display, HistoryManager &) {
+      ctrlState.fanAuto = (mode == "auto");
+      display.fanAuto = ctrlState.fanAuto;
+
+      if (!ctrlState.fanAuto) {
+        ctrlState.pidOutput = 0;
+        ctrlState.fanPercent = 0;
+        display.updateFanSpeed(0);
+      }
+    });
 
     Serial.printf("[WebSocket] Fan mode set to: %s\n", mode.c_str());
     updateClients();
@@ -221,22 +389,29 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   // Handle setpoint update (format: "2bVALUE")
   if (message.startsWith("2b")) {
-    int newSetpoint = message.substring(2).toInt();
-    ControllerState &ctrlState = stateCoord.getControllerMutable();
+    int newSetpoint = 0;
+    if (!parseStrictInt(message.substring(2), newSetpoint)) {
+      Serial.println("[WebSocket] Rejected invalid pit setpoint");
+      return;
+    }
+    newSetpoint = clampInt(newSetpoint, kMinPitSetpoint, kMaxPitSetpoint);
+    double setpointDelta = 0.0;
+    stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                             DisplayState &display, HistoryManager &) {
+      setpointDelta = abs(newSetpoint - ctrlState.setpoint);
+      if (setpointDelta > 10.0) {
+        ctrlState.reset();
+      }
 
-    // Reset PID state if setpoint changes significantly
-    double setpointDelta = abs(newSetpoint - ctrlState.setpoint);
+      ctrlState.setpoint = newSetpoint;
+      display.updateSetpoint(newSetpoint);
+    });
+
     if (setpointDelta > 10.0) {
-      ctrlState.reset();
       Serial.printf(
           "[WebSocket] PID reset due to large setpoint change (%.1f°F)\n",
           setpointDelta);
     }
-
-    ctrlState.setpoint = newSetpoint;
-
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.updateSetpoint(newSetpoint);
 
     Serial.printf("[WebSocket] Setpoint updated to: %d°F\n", newSetpoint);
     updateClients();
@@ -245,15 +420,20 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   // Handle meat setpoint update (format: "8bVALUE")
   if (message.startsWith("8b")) {
-    int newMeatSetpoint = message.substring(2).toInt();
-    ControllerState &ctrlState = stateCoord.getControllerMutable();
-    ctrlState.meatSetpoint = newMeatSetpoint;
+    int newMeatSetpoint = 0;
+    if (!parseStrictInt(message.substring(2), newMeatSetpoint)) {
+      Serial.println("[WebSocket] Rejected invalid meat setpoint");
+      return;
+    }
+    newMeatSetpoint = clampInt(newMeatSetpoint, kMinMeatSetpoint, kMaxMeatSetpoint);
+    stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                             DisplayState &display, HistoryManager &) {
+      ctrlState.meatSetpoint = newMeatSetpoint;
+      display.meatSetpoint = String(newMeatSetpoint);
+    });
 
     // Save to storage
     storage.saveMeatSetpoint(newMeatSetpoint);
-
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.meatSetpoint = String(newMeatSetpoint);
 
     Serial.printf("[WebSocket] Meat Setpoint updated to: %d°F\n",
                   newMeatSetpoint);
@@ -263,15 +443,20 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   // Handle keep warm setpoint update (format: "9bVALUE")
   if (message.startsWith("9b")) {
-    int newKWSetpoint = message.substring(2).toInt();
-    ControllerState &ctrlState = stateCoord.getControllerMutable();
-    ctrlState.keepWarmSetpoint = newKWSetpoint;
+    int newKWSetpoint = 0;
+    if (!parseStrictInt(message.substring(2), newKWSetpoint)) {
+      Serial.println("[WebSocket] Rejected invalid keep warm setpoint");
+      return;
+    }
+    newKWSetpoint = clampInt(newKWSetpoint, kMinKeepWarmSetpoint, kMaxKeepWarmSetpoint);
+    stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
+                             DisplayState &display, HistoryManager &) {
+      ctrlState.keepWarmSetpoint = newKWSetpoint;
+      display.keepWarmSetpoint = String(newKWSetpoint);
+    });
 
     // Save to storage
     storage.saveKeepWarmSetpoint(newKWSetpoint);
-
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.keepWarmSetpoint = String(newKWSetpoint);
 
     Serial.printf("[WebSocket] Keep Warm Setpoint updated to: %d°F\n",
                   newKWSetpoint);
@@ -281,47 +466,69 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   // Handle alarm toggles (prepared for Phase 5)
   if (message.startsWith("KeepWarm")) {
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.keepWarmAlarm = message.substring(8);
+    if (!isBooleanString(message.substring(8))) {
+      Serial.println("[WebSocket] Rejected invalid KeepWarm state");
+      return;
+    }
+    String value = message.substring(8);
+    stateCoord.withDisplay([&](DisplayState &display) {
+      display.keepWarmAlarm = value;
+    });
     Serial.printf("[WebSocket] KeepWarm alarm: %s\n",
-                  display.keepWarmAlarm.c_str());
+                  value.c_str());
     updateClients();
     return;
   }
 
   if (message.startsWith("PitTempLow")) {
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.pitTempLowAlarm = message.substring(10);
+    if (!isBooleanString(message.substring(10))) {
+      Serial.println("[WebSocket] Rejected invalid PitTempLow state");
+      return;
+    }
+    String value = message.substring(10);
+    stateCoord.withDisplay([&](DisplayState &display) {
+      display.pitTempLowAlarm = value;
+    });
     Serial.printf("[WebSocket] PitTempLow alarm: %s\n",
-                  display.pitTempLowAlarm.c_str());
+                  value.c_str());
     updateClients();
     return;
   }
 
   if (message.startsWith("DoneAlarm")) {
-    DisplayState &display = stateCoord.getDisplayMutable();
-    ControllerState &ctrl = stateCoord.getControllerMutable();
-    display.doneAlarm = message.substring(9);
-    ctrl.keepWarmEnabled = (display.doneAlarm == "true");
+    if (!isBooleanString(message.substring(9))) {
+      Serial.println("[WebSocket] Rejected invalid DoneAlarm state");
+      return;
+    }
+    String value = message.substring(9);
+    bool keepWarmEnabled = (value == "true");
+    stateCoord.withState([&](SensorData &, ControllerState &ctrl,
+                             DisplayState &display, HistoryManager &) {
+      display.doneAlarm = value;
+      ctrl.keepWarmEnabled = keepWarmEnabled;
+    });
     Serial.printf("[WebSocket] DoneAlarm: %s (enabled: %d)\n",
-                  display.doneAlarm.c_str(), ctrl.keepWarmEnabled);
+                  value.c_str(), keepWarmEnabled);
     updateClients();
     return;
   }
 
   if (message.startsWith("LidDetection")) {
     String state = message.substring(12);
-    DisplayState &display = stateCoord.getDisplayMutable();
-    ControllerState &ctrl = stateCoord.getControllerMutable();
-
-    display.lidDetectionAlarm = state;
-    ctrl.lidDetectionEnabled = (state == "true");
-
-    // If disabled, force-close any active detection
-    if (!ctrl.lidDetectionEnabled) {
-      ctrl.lidOpen = false;
-      display.lidOpen = false;
+    if (!isBooleanString(state)) {
+      Serial.println("[WebSocket] Rejected invalid LidDetection state");
+      return;
     }
+    stateCoord.withState([&](SensorData &, ControllerState &ctrl,
+                             DisplayState &display, HistoryManager &) {
+      display.lidDetectionAlarm = state;
+      ctrl.lidDetectionEnabled = (state == "true");
+
+      if (!ctrl.lidDetectionEnabled) {
+        ctrl.lidOpen = false;
+        display.lidOpen = false;
+      }
+    });
 
     Serial.printf("[WebSocket] LidDetection: %s\n", state.c_str());
     updateClients();
@@ -330,7 +537,12 @@ void WebSocketHandler::handleMessage(const String &message) {
 
   // Handle Calibration
   if (message.startsWith("CalibratePit:")) {
-    int offset = message.substring(13).toInt();
+    int offset = 0;
+    if (!parseStrictInt(message.substring(13), offset)) {
+      Serial.println("[WebSocket] Rejected invalid pit calibration offset");
+      return;
+    }
+    offset = clampInt(offset, kMinProbeOffset, kMaxProbeOffset);
 
     // Update hardware
     tempSensor.setPitOffset(offset);
@@ -340,8 +552,9 @@ void WebSocketHandler::handleMessage(const String &message) {
                 tempSensor.getMeatOffset());
 
     // Update display state
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.pitOffset = String(offset);
+    stateCoord.withDisplay([&](DisplayState &display) {
+      display.pitOffset = String(offset);
+    });
 
     Serial.printf("[WebSocket] Calibrate Pit Offset: %d\n", offset);
     updateClients();
@@ -349,7 +562,12 @@ void WebSocketHandler::handleMessage(const String &message) {
   }
 
   if (message.startsWith("CalibrateMeat:")) {
-    int offset = message.substring(14).toInt();
+    int offset = 0;
+    if (!parseStrictInt(message.substring(14), offset)) {
+      Serial.println("[WebSocket] Rejected invalid meat calibration offset");
+      return;
+    }
+    offset = clampInt(offset, kMinProbeOffset, kMaxProbeOffset);
 
     // Update hardware
     tempSensor.setMeatOffset(offset);
@@ -359,8 +577,9 @@ void WebSocketHandler::handleMessage(const String &message) {
                 tempSensor.getMeatOffset());
 
     // Update display state
-    DisplayState &display = stateCoord.getDisplayMutable();
-    display.meatOffset = String(offset);
+    stateCoord.withDisplay([&](DisplayState &display) {
+      display.meatOffset = String(offset);
+    });
 
     Serial.printf("[WebSocket] Calibrate Meat Offset: %d\n", offset);
     updateClients();
@@ -375,9 +594,18 @@ void WebSocketHandler::handleMessage(const String &message) {
     int thirdColon = message.indexOf(':', secondColon + 1);
 
     if (firstColon != -1 && secondColon != -1 && thirdColon != -1) {
-      double newKp = message.substring(firstColon + 1, secondColon).toDouble();
-      double newKi = message.substring(secondColon + 1, thirdColon).toDouble();
-      double newKd = message.substring(thirdColon + 1).toDouble();
+      double newKp = 0.0;
+      double newKi = 0.0;
+      double newKd = 0.0;
+      if (!parseStrictDouble(message.substring(firstColon + 1, secondColon), newKp) ||
+          !parseStrictDouble(message.substring(secondColon + 1, thirdColon), newKi) ||
+          !parseStrictDouble(message.substring(thirdColon + 1), newKd)) {
+        Serial.println("[WebSocket] Rejected invalid PID update payload");
+        return;
+      }
+      newKp = clampDouble(newKp, kMinPidGain, kMaxPidGain);
+      newKi = clampDouble(newKi, kMinPidGain, kMaxPidGain);
+      newKd = clampDouble(newKd, kMinPidGain, kMaxPidGain);
 
       // Update hardware
       pidController.setTunings(newKp, newKi, newKd);
@@ -386,38 +614,53 @@ void WebSocketHandler::handleMessage(const String &message) {
       storage.savePIDTunings(newKp, newKi, newKd);
 
       // Update display state
-      DisplayState &display = stateCoord.getDisplayMutable();
-      display.kp = String(newKp, 2);
-      display.ki = String(newKi, 2);
-      display.kd = String(newKd, 2);
+      stateCoord.withDisplay([&](DisplayState &display) {
+        display.kp = String(newKp, 2);
+        display.ki = String(newKi, 2);
+        display.kd = String(newKd, 2);
+      });
 
       Serial.printf("[WebSocket] PID Updated - Kp: %.2f, Ki: %.2f, Kd: %.2f\n",
                     newKp, newKi, newKd);
       updateClients();
+    } else {
+      Serial.println("[WebSocket] Rejected malformed PID update payload");
     }
     return;
   }
 
   // Handle Start Autotune
   if (message == "StartAutotune:true") {
-    ControllerState &ctrl = stateCoord.getControllerMutable();
-    if (!ctrl.autotuneActive) {
-      autotuner.start(ctrl.setpoint, ctrl.pidOutput);
-      ctrl.autotuneActive = true;
+    bool started = false;
+    stateCoord.withController([&](ControllerState &ctrl) {
+      if (!ctrl.autotuneActive) {
+        autotuner.start(ctrl.setpoint, ctrl.pidOutput);
+        ctrl.autotuneActive = true;
+        started = true;
+      }
+    });
+    if (started) {
       updateClients();
     }
     return;
   }
 
   if (message == "StartAutotune:false") {
-    ControllerState &ctrl = stateCoord.getControllerMutable();
-    if (ctrl.autotuneActive) {
-      autotuner.stop();
-      ctrl.autotuneActive = false;
+    bool stopped = false;
+    stateCoord.withController([&](ControllerState &ctrl) {
+      if (ctrl.autotuneActive) {
+        autotuner.stop();
+        ctrl.autotuneActive = false;
+        stopped = true;
+      }
+    });
+    if (stopped) {
       updateClients();
     }
     return;
   }
+
+  Serial.printf("[WebSocket] Unhandled message: %s\n", message.c_str());
 }
 
 void WebSocketHandler::onStateChanged() { updateClients(); }
@@ -427,7 +670,7 @@ void WebSocketHandler::updateClients() {
       otaUpdater.getStatus() == OTAUpdater::INSTALLING) {
     return;
   }
-  const DisplayState &display = stateCoord.getDisplay();
+  DisplayState display = stateCoord.getDisplay();
   String json = display.toJSON();
   updateClients(json);
 }
@@ -436,25 +679,28 @@ void WebSocketHandler::updateClients(const String &customJson) {
   if (!server) {
     return;
   }
-  
-  // Skip if message is too large (prevent blocking)
+
   if (customJson.length() > 32768) {
     Serial.println("[WebSocket] Warning: Message too large, skipping");
     return;
   }
-  
+
   httpd_ws_frame_t frame{};
   frame.type = HTTPD_WS_TYPE_TEXT;
   frame.payload = reinterpret_cast<uint8_t *>(const_cast<char *>(customJson.c_str()));
   frame.len = customJson.length();
 
   cleanupClients();
+  std::vector<int> failedClients;
   for (int fd : clientFds) {
     esp_err_t ret = httpd_ws_send_frame_async(server, fd, &frame);
     if (ret != ESP_OK) {
-      // Remove failed client immediately
-      unregisterClient(fd);
+      failedClients.push_back(fd);
     }
+  }
+
+  for (int fd : failedClients) {
+    unregisterClient(fd);
   }
 }
 
@@ -462,8 +708,16 @@ void WebSocketHandler::cleanupClients() {
   if (!server) {
     return;
   }
-  // Session validation helper is not available in this ESP-IDF version.
-  // Keep existing client list; stale sockets will be cleaned up on send errors.
+
+  std::vector<int> duplicateFree;
+  duplicateFree.reserve(clientFds.size());
+  for (int fd : clientFds) {
+    if (std::find(duplicateFree.begin(), duplicateFree.end(), fd) ==
+        duplicateFree.end()) {
+      duplicateFree.push_back(fd);
+    }
+  }
+  clientFds.swap(duplicateFree);
 }
 
 #else

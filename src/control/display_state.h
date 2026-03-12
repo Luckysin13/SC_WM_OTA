@@ -14,6 +14,47 @@
 // =============================================================================
 
 struct DisplayState {
+  static String escapeJson(const String &value) {
+    std::string escaped;
+    escaped.reserve(value.length() + 8);
+    for (char ch : value.str()) {
+      switch (ch) {
+      case '\\':
+        escaped += "\\\\";
+        break;
+      case '"':
+        escaped += "\\\"";
+        break;
+      case '\b':
+        escaped += "\\b";
+        break;
+      case '\f':
+        escaped += "\\f";
+        break;
+      case '\n':
+        escaped += "\\n";
+        break;
+      case '\r':
+        escaped += "\\r";
+        break;
+      case '\t':
+        escaped += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(ch) < 0x20) {
+          char buffer[7];
+          snprintf(buffer, sizeof(buffer), "\\u%04x",
+                   static_cast<unsigned char>(ch));
+          escaped += buffer;
+        } else {
+          escaped.push_back(ch);
+        }
+        break;
+      }
+    }
+    return String(escaped);
+  }
+
   // Temperature displays
   String meatTemp = "Meat";        // boxValue0
   String pitTemp = "Pit";          // boxValue1
@@ -114,16 +155,16 @@ struct DisplayState {
   // Convert to JSON for WebSocket transmission
   String toJSON() const {
     String json = "{";
-    json += "\"boxValue0\":\"" + meatTemp + "\",";
-    json += "\"boxValue1\":\"" + pitTemp + "\",";
-    json += "\"boxValue2\":\"" + setpoint + "\",";
-    json += "\"boxValue3\":\"" + fanSpeed + "\",";
-    json += "\"pitOffset\":\"" + pitOffset + "\",";
-    json += "\"meatOffset\":\"" + meatOffset + "\",";
-    json += "\"kp\":\"" + kp + "\",";
-    json += "\"ki\":\"" + ki + "\",";
-    json += "\"kd\":\"" + kd + "\",";
-    json += "\"timezone\":\"" + timezone + "\",";
+    json += "\"boxValue0\":\"" + escapeJson(meatTemp) + "\",";
+    json += "\"boxValue1\":\"" + escapeJson(pitTemp) + "\",";
+    json += "\"boxValue2\":\"" + escapeJson(setpoint) + "\",";
+    json += "\"boxValue3\":\"" + escapeJson(fanSpeed) + "\",";
+    json += "\"pitOffset\":\"" + escapeJson(pitOffset) + "\",";
+    json += "\"meatOffset\":\"" + escapeJson(meatOffset) + "\",";
+    json += "\"kp\":\"" + escapeJson(kp) + "\",";
+    json += "\"ki\":\"" + escapeJson(ki) + "\",";
+    json += "\"kd\":\"" + escapeJson(kd) + "\",";
+    json += "\"timezone\":\"" + escapeJson(timezone) + "\",";
     json += "\"isAP\":" + String(isAP ? "true" : "false") + ",";
     json += "\"lid\":" + String(lidOpen ? "true" : "false") + ",";
     json += "\"atActive\":" + String(autotuneActive ? "true" : "false") + ",";
@@ -134,16 +175,16 @@ struct DisplayState {
     json += "\"t\":" + String((int)time(nullptr)) + ",";
     json += "\"o\":" + String((int)timeSync.getUTCOffset()) + ",";
 
-    json += "\"boxValue4\":\"" + keepWarmAlarm + "\",";
-    json += "\"boxValue5\":\"" + pitTempLowAlarm + "\",";
-    json += "\"boxValue6\":\"" + doneAlarm + "\",";
-    json += "\"boxValue7\":\"" + lidDetectionAlarm + "\",";
-    json += "\"boxValue8\":\"" + meatSetpoint + "\",";
-    json += "\"boxValue9\":\"" + keepWarmSetpoint + "\",";
+    json += "\"boxValue4\":\"" + escapeJson(keepWarmAlarm) + "\",";
+    json += "\"boxValue5\":\"" + escapeJson(pitTempLowAlarm) + "\",";
+    json += "\"boxValue6\":\"" + escapeJson(doneAlarm) + "\",";
+    json += "\"boxValue7\":\"" + escapeJson(lidDetectionAlarm) + "\",";
+    json += "\"boxValue8\":\"" + escapeJson(meatSetpoint) + "\",";
+    json += "\"boxValue9\":\"" + escapeJson(keepWarmSetpoint) + "\",";
 
-    json += "\"ssid\":\"" + wifiSsid + "\",";
+    json += "\"ssid\":\"" + escapeJson(wifiSsid) + "\",";
     json += "\"rssi\":" + wifiRssi + ",";
-    json += "\"ip\":\"" + wifiIp + "\",";
+    json += "\"ip\":\"" + escapeJson(wifiIp) + "\",";
     json += "\"connected\":" + String(wifiConnected ? "true" : "false");
     json += "}";
     return json;

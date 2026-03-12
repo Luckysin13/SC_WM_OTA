@@ -1,5 +1,9 @@
 #include "state_coordinator.h"
+#include "utils/time_sync.h"
 #include <algorithm>
+#include <cmath>
+
+extern TimeSync timeSync;
 
 // =============================================================================
 // STATE COORDINATOR IMPLEMENTATION
@@ -16,21 +20,27 @@ void StateCoordinator::begin() {
 // SENSOR DATA ACCESS
 // =============================================================================
 
-const SensorData &StateCoordinator::getSensors() const { return sensors; }
+SensorData StateCoordinator::getSensors() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return sensors;
+}
 
-void StateCoordinator::updateSensors(const SensorData &data) { sensors = data; }
+void StateCoordinator::updateSensors(const SensorData &data) {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  sensors = data;
+}
 
 // =============================================================================
 // CONTROLLER STATE ACCESS
 // =============================================================================
 
-const ControllerState &StateCoordinator::getController() const {
+ControllerState StateCoordinator::getController() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
   return controller;
 }
 
-ControllerState &StateCoordinator::getControllerMutable() { return controller; }
-
 void StateCoordinator::updateController(const ControllerState &state) {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
   controller = state;
 }
 
@@ -38,23 +48,34 @@ void StateCoordinator::updateController(const ControllerState &state) {
 // DISPLAY STATE ACCESS
 // =============================================================================
 
-const DisplayState &StateCoordinator::getDisplay() const { return display; }
-
-DisplayState &StateCoordinator::getDisplayMutable() { return display; }
+DisplayState StateCoordinator::getDisplay() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return display;
+}
 
 void StateCoordinator::updateDisplay() {
-  // Check if display state has changed
-  if (display.hasChanged()) {
-    // Record history point (HistoryManager handles thresholds internally)
+  std::vector<IStateObserver *> observerSnapshot;
+  bool displayChanged = false;
+
+  {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
     history.addPoint(
         (int16_t)round(sensors.pitTemp), (int16_t)round(sensors.meatTemp),
         (int16_t)round(controller.setpoint), (uint8_t)controller.fanPercent);
 
-    // Mark as seen
-    display.markClean();
+    displayChanged = display.hasChanged();
+    if (!displayChanged) {
+      return;
+    }
 
-    // Notify all observers (WebSocket clients)
-    notifyObservers();
+    display.markClean();
+    observerSnapshot = observers;
+  }
+
+  for (IStateObserver *observer : observerSnapshot) {
+    if (observer != nullptr) {
+      observer->onStateChanged();
+    }
   }
 }
 
@@ -62,25 +83,69 @@ void StateCoordinator::updateDisplay() {
 // HISTORY ACCESS
 // =============================================================================
 
-HistoryManager &StateCoordinator::getHistory() { return history; }
+String StateCoordinator::getHistoryJSON() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.getHistoryJSON();
+}
+
+String StateCoordinator::getHistoryChunkJSON(size_t start,
+                                             size_t maxPoints) const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.getHistoryChunkJSON(start, maxPoints,
+                                     static_cast<int32_t>(timeSync.getUTCOffset()));
+}
+
+size_t StateCoordinator::getHistoryCount() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.getCount();
+}
+
+std::string StateCoordinator::serializeHistorySnapshot() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.serializeSnapshot();
+}
+
+bool StateCoordinator::restoreHistorySnapshot(const std::string &snapshotData) {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.restoreSnapshot(snapshotData);
+}
+
+bool StateCoordinator::historyNeedsSnapshot() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  return history.hasUnsavedChanges();
+}
+
+void StateCoordinator::markHistorySnapshotSaved() {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  history.markSnapshotSaved();
+}
 
 // =============================================================================
 // OBSERVER MANAGEMENT
 // =============================================================================
 
 void StateCoordinator::addObserver(IStateObserver *observer) {
-  if (observer != nullptr) {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
+  if (observer != nullptr &&
+      std::find(observers.begin(), observers.end(), observer) == observers.end()) {
     observers.push_back(observer);
   }
 }
 
 void StateCoordinator::removeObserver(IStateObserver *observer) {
+  std::lock_guard<std::recursive_mutex> lock(mutex);
   observers.erase(std::remove(observers.begin(), observers.end(), observer),
                   observers.end());
 }
 
 void StateCoordinator::notifyObservers() {
-  for (IStateObserver *observer : observers) {
+  std::vector<IStateObserver *> observerSnapshot;
+  {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    observerSnapshot = observers;
+  }
+
+  for (IStateObserver *observer : observerSnapshot) {
     if (observer != nullptr) {
       observer->onStateChanged();
     }

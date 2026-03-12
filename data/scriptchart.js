@@ -9,7 +9,7 @@ const SETPOINT_MIN = 160;
 const SETPOINT_MAX = 450;
 const INITIAL_RECONNECT_DELAY_MS = 1000;
 const MAX_RECONNECT_DELAY_MS = 30000;
-const MAX_DATA_POINTS = 1200;
+const MAX_DATA_POINTS = 1800;
 
 // =============================================================================
 // STATE
@@ -18,8 +18,10 @@ let websocket = null;
 let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
 let reconnectTimeout = null;
 let chartReady = false;
-let pendingHistory = null;
 let pendingState = null;
+let historyLoadInProgress = false;
+let historyExpectedPoints = 0;
+let historyLoadedPoints = 0;
 
 // =============================================================================
 // CHART DATA
@@ -226,6 +228,10 @@ function initWebSocket() {
 function onOpen(event) {
     console.log('[WebSocket] Connected successfully');
     reconnectDelay = INITIAL_RECONNECT_DELAY_MS; // Reset backoff
+    historyLoadInProgress = true;
+    historyExpectedPoints = 0;
+    historyLoadedPoints = 0;
+    pendingState = null;
 
     // Request full history first
     getHistory();
@@ -272,6 +278,12 @@ function getHistory() {
     }
 }
 
+function requestHistoryChunk(start) {
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(`getHistoryChunk:${start}`);
+    }
+}
+
 // =============================================================================
 // MESSAGE HANDLING
 // =============================================================================
@@ -285,17 +297,26 @@ function onMessage(event) {
         const data = JSON.parse(event.data);
         // console.log('[Chart] Received:', data.type || 'state');
 
-        if (data.type === 'history') {
-            // Reset start time if history loaded (for duration calc)
-            if (data.data && data.data.length > 0) {
-                startTime = data.data[0].t;
+        if (data.type === 'historyChunk') {
+            const start = Number(data.start) || 0;
+            const points = Array.isArray(data.data) ? data.data : [];
+            if (start === 0) {
+                beginHistoryLoad(Number(data.total) || 0);
             }
+            appendHistoryChunk(points, data.offset);
+            if (data.complete) {
+                finishHistoryLoad();
+            } else {
+                requestHistoryChunk(Number(data.nextStart) || (start + points.length));
+            }
+            return;
+        }
+
+        if (data.type === 'history') {
             if (Array.isArray(data.data)) {
-                if (!chartReady || !fanChart) {
-                    pendingHistory = { data: data.data, offset: data.offset };
-                    return;
-                }
-                loadHistory(data.data, data.offset);
+                beginHistoryLoad(data.data.length);
+                appendHistoryChunk(data.data, data.offset);
+                finishHistoryLoad();
             }
         } else {
             // It's a state packet (contains boxValues and timezone)
@@ -339,6 +360,10 @@ function onMessage(event) {
 
             // Only process data points when temperature data is present
             if (data.boxValue0 !== undefined || data.boxValue1 !== undefined) {
+                if (historyLoadInProgress) {
+                    pendingState = data;
+                    return;
+                }
                 if (!chartReady || !fanChart) {
                     pendingState = data;
                     return;
@@ -346,26 +371,48 @@ function onMessage(event) {
                 addDataPoint(data);
             }
         }
-
-        // Update chart display
-        if (fanChart) fanChart.update();
     } catch (error) {
         console.error('[Chart] Failed to parse message:', error);
     }
 }
 
-function loadHistory(historyPoints, offset) {
-    console.log(`[Chart] Loading ${historyPoints.length} history points...`);
+function updateChartBindings() {
+    if (!fanChart) {
+        return;
+    }
 
-    // Clear current chart data
+    fanChart.data.labels = chartLabels;
+    fanChart.data.datasets[0].data = meatData;
+    fanChart.data.datasets[1].data = pitData;
+    fanChart.data.datasets[2].data = setpointData;
+    fanChart.data.datasets[3].data = fanSpeedData;
+}
+
+function beginHistoryLoad(totalPoints) {
+    console.log(`[Chart] Starting history load (${totalPoints} points)...`);
     chartLabels = [];
     meatData = [];
     pitData = [];
     setpointData = [];
     fanSpeedData = [];
     dataPointCount = 0;
+    lastGoodSetpoint = null;
+    lastGoodFan = null;
+    historyLoadInProgress = true;
+    historyExpectedPoints = totalPoints;
+    historyLoadedPoints = 0;
+    startTime = null;
+    updateChartBindings();
 
-    // Process points
+    const liveEl = document.getElementById('liveReadings');
+    if (liveEl) {
+        liveEl.innerHTML = 'Loading temperature history...';
+    }
+}
+
+function appendHistoryChunk(historyPoints, offset) {
+    console.log(`[Chart] Received history chunk with ${historyPoints.length} points`);
+
     historyPoints.forEach(p => {
         // Format timestamp using smoker's offset
         const timeLabel = formatTimeWithOffset(p.t, offset);
@@ -378,16 +425,20 @@ function loadHistory(historyPoints, offset) {
         dataPointCount++;
     });
 
-    // Update chart references (since we reassigned the arrays)
-    fanChart.data.labels = chartLabels;
-    fanChart.data.datasets[0].data = meatData;
-    fanChart.data.datasets[1].data = pitData;
-    fanChart.data.datasets[2].data = setpointData;
-    fanChart.data.datasets[3].data = fanSpeedData;
+    historyLoadedPoints += historyPoints.length;
+    updateChartBindings();
 
-    fanChart.data.datasets[3].data = fanSpeedData;
+    const liveEl = document.getElementById('liveReadings');
+    if (liveEl && historyLoadInProgress) {
+        const totalLabel = historyExpectedPoints > 0 ? historyExpectedPoints : historyLoadedPoints;
+        liveEl.innerHTML = `Loading history ${historyLoadedPoints}/${totalLabel}...`;
+    }
+}
 
-    // Update live readings with the most recent data point
+function finishHistoryLoad() {
+    historyLoadInProgress = false;
+    updateChartBindings();
+
     if (meatData.length > 0) {
         updateLiveReadings(
             meatData[meatData.length - 1],
@@ -395,6 +446,21 @@ function loadHistory(historyPoints, offset) {
             setpointData[setpointData.length - 1],
             fanSpeedData[fanSpeedData.length - 1]
         );
+    } else {
+        const liveEl = document.getElementById('liveReadings');
+        if (liveEl) {
+            liveEl.innerHTML = 'Waiting for data...';
+        }
+    }
+
+    if (pendingState) {
+        const queuedState = pendingState;
+        pendingState = null;
+        addDataPoint(queuedState);
+    }
+
+    if (fanChart) {
+        fanChart.update();
     }
 
     console.log('[Chart] History loaded successfully');
@@ -442,6 +508,10 @@ function addDataPoint(data) {
     }
 
     updateLiveReadings(meatTemp, pitTemp, setpoint, fanSpeed);
+
+    if (fanChart) {
+        fanChart.update();
+    }
 }
 
 function updateLiveReadings(meat, pit, setpoint, fan) {
@@ -607,11 +677,11 @@ function initChart() {
 
     console.log('[Chart] Chart initialized successfully');
     chartReady = true;
-    if (pendingHistory) {
-        loadHistory(pendingHistory.data, pendingHistory.offset);
-        pendingHistory = null;
+    updateChartBindings();
+    if (fanChart && chartLabels.length > 0) {
+        fanChart.update();
     }
-    if (pendingState) {
+    if (pendingState && !historyLoadInProgress) {
         addDataPoint(pendingState);
         pendingState = null;
     }
