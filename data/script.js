@@ -162,9 +162,10 @@ function shouldApplyIncomingValue(inputId, element, incomingValue) {
 
     if (matchesIncomingValue) {
         dirtyInputs.delete(inputId);
+        return false;
     }
 
-    if (dirtyInputs.has(inputId) && !matchesIncomingValue) {
+    if (dirtyInputs.has(inputId)) {
         return false;
     }
 
@@ -606,8 +607,8 @@ function onMessage(event) {
             updateDisplayValue('calPitTemp', null, data.boxValue1);
         }
         const pitOffsetInput = document.getElementById('pitOffsetInput');
-        if (shouldApplyIncomingValue('pitOffsetInput', pitOffsetInput, data.pitOffset || 0)) {
-            pitOffsetInput.value = data.pitOffset || 0;
+        if (data.pitOffset !== undefined && shouldApplyIncomingValue('pitOffsetInput', pitOffsetInput, data.pitOffset)) {
+            pitOffsetInput.value = data.pitOffset;
         }
 
         // Meat Probe
@@ -615,22 +616,22 @@ function onMessage(event) {
             updateDisplayValue('calMeatTemp', null, data.boxValue0);
         }
         const meatOffsetInput = document.getElementById('meatOffsetInput');
-        if (shouldApplyIncomingValue('meatOffsetInput', meatOffsetInput, data.meatOffset || 0)) {
-            meatOffsetInput.value = data.meatOffset || 0;
+        if (data.meatOffset !== undefined && shouldApplyIncomingValue('meatOffsetInput', meatOffsetInput, data.meatOffset)) {
+            meatOffsetInput.value = data.meatOffset;
         }
 
         // PID Parameters
         const kpInput = document.getElementById('kpInput');
-        if (shouldApplyIncomingValue('kpInput', kpInput, data.kp || "10.00")) {
-            kpInput.value = data.kp || "10.00";
+        if (data.kp !== undefined && shouldApplyIncomingValue('kpInput', kpInput, data.kp)) {
+            kpInput.value = data.kp;
         }
         const kiInput = document.getElementById('kiInput');
-        if (shouldApplyIncomingValue('kiInput', kiInput, data.ki || "0.05")) {
-            kiInput.value = data.ki || "0.05";
+        if (data.ki !== undefined && shouldApplyIncomingValue('kiInput', kiInput, data.ki)) {
+            kiInput.value = data.ki;
         }
         const kdInput = document.getElementById('kdInput');
-        if (shouldApplyIncomingValue('kdInput', kdInput, data.kd || "2.00")) {
-            kdInput.value = data.kd || "2.00";
+        if (data.kd !== undefined && shouldApplyIncomingValue('kdInput', kdInput, data.kd)) {
+            kdInput.value = data.kd;
         }
 
         if (data.isAP !== undefined) {
@@ -848,7 +849,9 @@ function updateDisplayValue(spanId, inputId, value) {
     }
 
     if (input && input.tagName === 'INPUT') {
-        input.value = safeValue;
+        if (String(input.value) !== String(safeValue)) {
+            input.value = safeValue;
+        }
     }
 }
 

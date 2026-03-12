@@ -142,7 +142,7 @@
     <script>
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js?v=3.0.1')
+                navigator.serviceWorker.register('/sw.js?v=3.0.2')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] SW registration failed:', err));
             });
