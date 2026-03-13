@@ -151,10 +151,18 @@
             <div
                 style="margin-top: var(--space-lg); padding: var(--space-md); background: var(--secondary-bg); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
                 <p style="color: var(--text-secondary); font-size: 0.875rem; margin: 0;">
-                    <strong>Note:</strong> After submitting, the controller will restart and attempt to connect to your
-                    WiFi network.
-                    If the connection is successful, access the controller at the IP address you specified above.
-                </p>
+                    <strong>Note:</strong> <p>
+                    After submitting, the controller will restart and attempt to connect to your Wi-Fi network.
+                    If the connection is successful, the blue LED will remain solid.
+                    </p>
+
+                    <p>You can then access the controller at:</p>
+
+                    <ul>
+                    <li><a href="http://smoker.local">http://smoker.local</a></li>
+                    <li><a href="http://192.168.4.1">http://192.168.4.1</a></li>
+                    <li>Or the IP address you specified above.</li>
+                    </ul></p>
             </div>
         </form>
     </main>
@@ -164,7 +172,7 @@
     <script>
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js?v=3.0.2')
+                navigator.serviceWorker.register('/sw.js?v=3.0.3')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] SW registration failed:', err));
             });

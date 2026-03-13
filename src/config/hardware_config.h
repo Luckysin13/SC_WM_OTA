@@ -27,10 +27,9 @@
 // PWM CONFIGURATION (LEDC)
 // =============================================================================
 #define PWM_CHANNEL 0      // LEDC channel for PWM
-#define PWM_FREQUENCY 1000 // PWM frequency in Hz
-#define PWM_RESOLUTION 8   // 8-bit resolution (0-255)
-#define FAN_MIN_DUTY 90    // Minimum duty cycle to start fan motor
-
+#define PWM_FREQUENCY 100 // PWM frequency in Hz (default 1 kHz)
+#define PWM_RESOLUTION 8   // 8-bit resolution (8= 312,500Hz, 10= 78,125Hz, 12=19,531Hz)
+#define FAN_MIN_DUTY 90    // Minimum duty cycle to start fan motor (0-255)
 // =============================================================================
 // THERMISTOR CONFIGURATION (Steinhart-Hart Equation)
 // =============================================================================

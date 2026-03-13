@@ -7,7 +7,6 @@
 const CACHE_PREFIX = 'smoker-controller-';
 const CACHE_VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
-const OFFLINE_URL = '/offline.html';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -24,8 +23,7 @@ const PRECACHE_ASSETS = [
   '/chart.umd.js',
   '/manifest.json',
   '/favicon.png',
-  '/icon-192.svg',
-  '/offline.html'
+  '/icon-192.svg'
 ];
 
 // Install event - cache core assets
@@ -95,7 +93,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For HTML pages: Network first, then cache, then offline page
+  // For HTML pages: Network first, then cache
   if (event.request.mode === 'navigate' || 
       event.request.headers.get('accept')?.includes('text/html')) {
     event.respondWith(
@@ -111,13 +109,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // Network failed, try cache
           return caches.match(event.request)
-            .then((cachedResponse) => {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              // No cache, return offline page
-              return caches.match(OFFLINE_URL);
-            });
+            .then((cachedResponse) => cachedResponse || Response.error());
         })
     );
     return;

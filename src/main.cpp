@@ -211,49 +211,23 @@ void wifiLedTask(void *param) {
   unsigned long pendingSince = millis();
   bool lastStateWasSolid = false;
   bool debugPrinted = false;
-  int loopCount = 0;
-  unsigned long lastWifiCheck = 0;
-  bool isStaConnected = false;
   WifiLedMode appliedMode = WifiLedMode::Off;
   WifiLedMode pendingMode = WifiLedMode::Off;
   
   while (1) {
-    wifi_mode_t wifiMode = WIFI_MODE_NULL;
-    esp_wifi_get_mode(&wifiMode);
     bool wifiReadyForUser = s_wifiReadyForUser;
+    bool isStaConnected = networkMgr.isConnected();
+    bool isApActive = networkMgr.isAccessPointActive();
     WifiLedMode desiredMode = WifiLedMode::Off;
     
-    // Check WiFi connection status only once per second
     unsigned long now = millis();
-    if (now - lastWifiCheck >= 1000) {
-      lastWifiCheck = now;
-      // Check if STA is actually connected (has valid connection and IP)
-      isStaConnected = false;
-      if (wifiMode == WIFI_MODE_STA || wifiMode == WIFI_MODE_APSTA) {
-        // Try to get AP info - only works if STA is connected
-        wifi_ap_record_t ap_info;
-        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-          isStaConnected = true;
-        }
-      }
-    }
-    
-    loopCount++;
-    
-    // Debug every 50 loops
-    if (loopCount % 50 == 1) {
-      // Removed debug print to reduce serial spam
-    }
     
     if (!wifiReadyForUser) {
       desiredMode = WifiLedMode::Off;
-    } else if (isStaConnected && wifiMode == WIFI_MODE_STA) {
+    } else if (isStaConnected) {
       desiredMode = WifiLedMode::Solid;
-    } else if (wifiMode == WIFI_MODE_AP ||
-               (wifiMode == WIFI_MODE_APSTA && !isStaConnected)) {
+    } else if (isApActive) {
       desiredMode = WifiLedMode::Blink;
-    } else if (isStaConnected && wifiMode == WIFI_MODE_APSTA) {
-      desiredMode = WifiLedMode::Solid;
     }
 
     if (desiredMode != pendingMode) {
@@ -803,23 +777,6 @@ void loop() {
 
   } else {
     Serial.println("WiFi: Not connected");
-  }
-
-  // WiFi Status LED Control
-  // Connected (STA) or AP active -> Solid ON
-  // Disconnected -> Blink 1Hz (500ms ON, 500ms OFF)
-  if (networkMgr.isConnected() || networkMgr.getMode() == NetworkMode::AP) {
-    gpio_set_level(static_cast<gpio_num_t>(PIN_WIFI_LED), 1);
-  } else {
-    static unsigned long lastBlinkTime = 0;
-    static bool ledState = false;
-    unsigned long currentMillis = millis();
-
-    if (currentMillis - lastBlinkTime >= 500) {
-      lastBlinkTime = currentMillis;
-      ledState = !ledState;
-      gpio_set_level(static_cast<gpio_num_t>(PIN_WIFI_LED), ledState ? 1 : 0);
-    }
   }
 
   Serial.print("Meat Temp:    ");

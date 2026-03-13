@@ -49,7 +49,6 @@
 // =============================================================================
 #define PATH_MANIFEST "/manifest.json"
 #define PATH_SW "/sw.js"
-#define PATH_OFFLINE "/offline.html"
 #define PATH_ICON "/icon-192.svg"
 
 #endif // PATHS_CONFIG_H

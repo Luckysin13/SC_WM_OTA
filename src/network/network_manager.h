@@ -50,6 +50,9 @@ public:
     // Check if connected to WiFi
     bool isConnected() const;
 
+    // Check if AP mode is currently active (AP only or AP+STA fallback)
+    bool isAccessPointActive() const;
+
     // Get local IP address
     IPAddress getLocalIP() const;
 

@@ -24,6 +24,8 @@ esp_netif_t *s_apNetif = nullptr;
 bool s_initialized = false;
 bool s_mdnsInitialized = false;
 int s_lastDisconnectReason = 0;
+volatile bool s_staConnected = false;
+volatile bool s_apActive = false;
 
 void updateMdnsForNetif(esp_netif_t *netif, mdns_event_actions_t actions,
                         const char *label) {
@@ -83,10 +85,12 @@ void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id,
 
   if (event_base == WIFI_EVENT) {
     if (event_id == WIFI_EVENT_STA_START) {
+      s_staConnected = false;
       Serial.println("[WIFI] STA start");
     } else if (event_id == WIFI_EVENT_STA_CONNECTED) {
       Serial.println("[WIFI] STA connected");
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
+      s_staConnected = false;
       auto *disconnected = static_cast<wifi_event_sta_disconnected_t *>(event_data);
       if (disconnected) {
         s_lastDisconnectReason = disconnected->reason;
@@ -99,8 +103,10 @@ void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id,
       }
       xEventGroupSetBits(s_wifiEventGroup, kFailBit);
     } else if (event_id == WIFI_EVENT_AP_START) {
+      s_apActive = true;
       Serial.println("[WIFI] AP start");
     } else if (event_id == WIFI_EVENT_AP_STOP) {
+      s_apActive = false;
       Serial.println("[WIFI] AP stop");
     } else if (event_id == WIFI_EVENT_AP_STACONNECTED) {
       auto *ap_connected = static_cast<wifi_event_ap_staconnected_t *>(event_data);
@@ -126,6 +132,7 @@ void wifiEventHandler(void *arg, esp_event_base_t event_base, int32_t event_id,
   }
 
   if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+    s_staConnected = true;
     auto *got_ip = static_cast<ip_event_got_ip_t *>(event_data);
     if (got_ip) {
       Serial.printf("[WIFI] STA got IP: %s\n",
@@ -433,8 +440,11 @@ bool NetworkManager::startAP() {
 }
 
 bool NetworkManager::isConnected() const {
-  wifi_ap_record_t ap_info{};
-  return esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK;
+  return s_staConnected;
+}
+
+bool NetworkManager::isAccessPointActive() const {
+  return s_apActive;
 }
 
 IPAddress NetworkManager::getLocalIP() const {
