@@ -122,7 +122,7 @@
         // Register Service Worker for PWA support (HTTP only - self-signed HTTPS certs not supported)
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js?v=3.0.9')
+                navigator.serviceWorker.register('/sw.js?v=3.0.10')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] Service Worker registration failed:', err));
             });
