@@ -1,0 +1,19 @@
+{
+  "version": "3.0.2",
+  "description": "Release 3.0.2",
+  "firmware": "firmware.bin",
+  "littlefs": "littlefs.bin",
+  "secure_version": 0,
+  "artifacts": {
+    "firmware": {
+      "path": "firmware.bin",
+      "size": 1217956,
+      "sha256": "903dd865c8d75742686ef6675454d2dd23e65feba500463d5ce6d2acdcbdc3b5"
+    },
+    "littlefs": {
+      "path": "littlefs.bin",
+      "size": 458752,
+      "sha256": "29d7abdbe2aa191db183a4216a28d4a6a75814c06bd68677a95327608db6dd4f"
+    }
+  }
+}

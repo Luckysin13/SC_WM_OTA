@@ -1,0 +1,6 @@
+{
+  "version": "2.1.7",
+  "description": "Release 2.1.7",
+  "firmware": "firmware.bin",
+  "littlefs": "littlefs.bin"
+}
