@@ -4,9 +4,9 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 
 ## Current Release
 
-- Current source version: `3.0.7`
+- Current source version: `3.0.8`
 - Latest OTA manifest: `releases/latest/manifest.json`
-- Current versioned OTA release: `releases/v3.0.7/`
+- Current versioned OTA release: `releases/v3.0.8/`
 - Filesystem format: LittleFS
 
 ### Release Artifacts
@@ -14,11 +14,11 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 - `releases/latest/firmware.bin`
 - `releases/latest/littlefs.bin`
 - `releases/latest/manifest.json`
-- `releases/v3.0.6/firmware.bin`
-- `releases/v3.0.6/littlefs.bin`
-- `releases/v3.0.6/manifest.json`
+- `releases/v3.0.7/firmware.bin`
+- `releases/v3.0.7/littlefs.bin`
+- `releases/v3.0.7/manifest.json`
 
-### 3.0.6 Notes
+### 3.0.7 Notes
 
 - Refreshed OTA release metadata and repository documentation.
 - Aligned the release tree with the current firmware and LittleFS artifacts.
@@ -33,7 +33,7 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 ├── releases/
 │   ├── latest/              OTA pointers used by devices in the field
 │   ├── v1.0.0/ ...          Historical releases
-│   └── v3.0.6/              Current versioned release
+│   └── v3.0.7/              Current versioned release
 ├── scripts/
 │   ├── ota_release.sh       Release helper for publishing OTA artifacts
 │   ├── sign_firmware.py     Post-build signing helper

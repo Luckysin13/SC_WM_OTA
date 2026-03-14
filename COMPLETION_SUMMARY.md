@@ -2,15 +2,15 @@
 
 ## Status
 
-The repository is aligned to the current `3.0.7` firmware and OTA release state.
+The repository is aligned to the current `3.0.8` firmware and OTA release state.
 
 ## What Was Updated
 
-- Firmware version aligned to `3.0.7`.
-- Web app version aligned to `3.0.7`.
+- Firmware version aligned to `3.0.8`.
+- Web app version aligned to `3.0.8`.
 - Service worker cache-busting tokens updated across the HTML pages.
 - `releases/latest/` refreshed with the current firmware and LittleFS artifacts.
-- Current versioned OTA release snapshot: `releases/v3.0.7/`.
+- Current versioned OTA release snapshot: `releases/v3.0.8/`.
 - `releases/latest/manifest.json` updated with current size and SHA-256 metadata.
 - Root documentation rewritten to match the current repository layout and OTA workflow.
 
@@ -18,17 +18,17 @@ The repository is aligned to the current `3.0.7` firmware and OTA release state.
 
 - Firmware size: `1215892`
 - LittleFS size: `458752`
-- Firmware SHA-256: `ef44fe363f8d0c9e239adbad40466af4f15f631bee3a00b4c8ce0f58b9030a1e`
-- LittleFS SHA-256: `d9eefcfde36e2f528c8d1648534f1c7337a446cb02f4a2712880fcfa6eb67107`
+- Firmware SHA-256: `f1ad365f215c79c9a9ed0cb2c789b1a9d9000abc0f221bc2237a6236687ddaa7`
+- LittleFS SHA-256: `9c6e24abf22029415c0710a12b19e75e91b0bedc9eeb814791beb3e32513f237`
 
 ## Current Release Paths
 
 - `releases/latest/manifest.json`
 - `releases/latest/firmware.bin`
 - `releases/latest/littlefs.bin`
-- `releases/v3.0.7/manifest.json`
-- `releases/v3.0.7/firmware.bin`
-- `releases/v3.0.7/littlefs.bin`
+- `releases/v3.0.8/manifest.json`
+- `releases/v3.0.8/firmware.bin`
+- `releases/v3.0.8/littlefs.bin`
 
 ## Current Behavior Notes
 
@@ -38,8 +38,8 @@ The repository is aligned to the current `3.0.7` firmware and OTA release state.
 
 ## Verification Performed
 
-- `pio run` completed successfully on `3.0.7`.
-- `pio run -t buildfs` completed successfully on `3.0.7`.
+- `pio run` completed successfully on `3.0.8`.
+- `pio run -t buildfs` completed successfully on `3.0.8`.
 - OTA release manifests were updated to current artifact hashes.
 - Root docs were rewritten to remove stale `v1.0.0` bootstrap instructions.
 
