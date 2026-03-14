@@ -1,326 +1,144 @@
-# Task #6 OTA Updates - Complete Setup & Implementation Guide
+# OTA Implementation Guide
 
-**Status**: ✅ OTA Repository Created & Framework Ready  
-**Created**: 2026-01-16  
-**Next Step**: Push to GitHub using PAT, then implement in firmware
+This document describes the current OTA implementation and release mechanics in this repository.
 
----
+## Current Versioning Model
 
-## 📋 What Has Been Completed
+- Firmware version source: `CMakeLists.txt` via `PROJECT_VER`
+- Web app version source: `data/manifest.json`
+- OTA entry point: `releases/latest/manifest.json`
+- Current published version in this repository: `3.0.5`
 
-### 1. ✅ OTA Repository Created
-- Location: `/home/jonathan/Downloads/SC_WM_OTA/`
-- Compiled firmware binaries included:
-  - `firmware.bin` (972 KB) - Main application
-  - `spiffs.bin` (1.4 MB) - Web interface and filesystem
-  - `manifest.json` - Version metadata
+Devices compare the version reported by `PROJECT_VER` against the version from `releases/latest/manifest.json`.
 
-### 2. ✅ Documentation
-- **README.md** - Comprehensive OTA repository documentation
-- **SETUP_INSTRUCTIONS.md** - Step-by-step GitHub push guide
-- **setup_github.sh** - Automated push script
+## Runtime Components
 
-### 3. ✅ OTA Updater Framework
-Created C++ foundation classes ready for implementation:
-- **ota_updater.h** - OTA updater interface
-- **ota_updater.cpp** - Implementation with GitHub integration
-- **OTA_UI_COMPONENT.html** - Web interface for OTA updates
+### OTA updater
 
----
+Source files:
 
-## 🚀 Quick Start: Push to GitHub
+- `src/network/ota_updater.h`
+- `src/network/ota_updater.cpp`
 
-### Step 1: Create GitHub Personal Access Token
+Responsibilities:
 
-1. Go to: https://github.com/settings/tokens
-2. Click "Generate new token (classic)"
-3. Name: `SC_WM_OTA_Deploy`
-4. Scope: `repo` (full control)
-5. Copy the token (example: `ghp_xxxxxxxxxxxx`)
+- Fetch `releases/latest/manifest.json`
+- Compare manifest version to current firmware version
+- Download LittleFS and firmware artifacts
+- Validate sizes and SHA-256 hashes
+- Stage and apply updates safely
+- Report status and progress to the web UI
 
-### Step 2: Push Repository
+### Web interface
 
-```bash
-cd /home/jonathan/Downloads/SC_WM_OTA
-./setup_github.sh ghp_xxxxxxxxxxxx
-```
+Relevant files:
 
-Expected success output:
-```
-✅ Successfully pushed to GitHub!
+- `data/configuration.html`
+- `data/script.js`
+- `src/control/display_state.h`
+- `src/network/websocket_handler.cpp`
 
-Repository is now available at:
-  https://github.com/Luckysin13/SC_WM_OTA
-```
+Responsibilities:
 
-### Step 3: Make Repository Public
+- Trigger OTA checks from the configuration page
+- Surface OTA status, version, and progress
+- Reflect updater state via WebSocket JSON
 
-1. Go to: https://github.com/Luckysin13/SC_WM_OTA/settings
-2. Change visibility to "Public"
-3. Confirm
+## Manifest Format
 
----
+Current manifest schema:
 
-## 📦 Repository Structure After Setup
-
-```
-GitHub (Public)
-https://github.com/Luckysin13/SC_WM_OTA/
-
-releases/
-├── v1.0.0/
-│   ├── firmware.bin       (Raw URL for download)
-│   ├── spiffs.bin         (Raw URL for download)
-│   └── manifest.json      (Version info)
-└── v1.1.0/               (Future versions)
-    ├── firmware.bin
-    ├── spiffs.bin
-    └── manifest.json
-```
-
-### Raw Content URLs (for OTA downloads)
-
-After pushing to GitHub:
-
-```
-Manifest: https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/manifest.json
-Firmware: https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/firmware.bin
-SPIFFS:   https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/spiffs.bin
-```
-
----
-
-## 🔧 Framework for Task #6 Implementation
-
-Three files have been created to support OTA implementation:
-
-### 1. **ota_updater.h / ota_updater.cpp**
-
-Location: `src/network/`
-
-**Features:**
-- Fetches `manifest.json` from GitHub
-- Compares versions with current firmware
-- Downloads firmware binary via HTTP
-- Uses ESP32 Update API for safe firmware flashing
-- Progress tracking (0-100%)
-- Error handling and recovery
-
-**Key Functions:**
-```cpp
-OTAUpdater updater;
-updater.begin();                    // Initialize
-updater.checkForUpdates();          // Check GitHub for new version
-bool available = (updater.getStatus() == OTAUpdater::UPDATE_AVAILABLE);
-updater.startUpdate();              // Download & install
-int progress = updater.getProgress(); // 0-100%
-```
-
-### 2. **OTA_UI_COMPONENT.html**
-
-Location: `src/network/`
-
-**Features:**
-- Beautiful update status display
-- "Check for Updates" button
-- Progress bar during download/install
-- Auto-reboot after successful update
-- Troubleshooting section
-- Error handling UI
-
-**Integration:**
-Copy the HTML/CSS/JS sections into `configuration.html` update tab
-
-### 3. **manifest.json** (in releases/)
-
-Format:
 ```json
 {
-  "version": "1.0.0",
-  "timestamp": "2026-01-16T18:30:00Z",
-  "description": "Initial release with Time-to-Done",
-  "firmware": {
-    "file": "firmware.bin",
-    "size": 995328,
-    "checksum": ""
-  },
-  "features": [...]
+  "version": "X.Y.Z",
+  "description": "Release X.Y.Z",
+  "firmware": "firmware.bin",
+  "littlefs": "littlefs.bin",
+  "secure_version": 0,
+  "artifacts": {
+    "firmware": {
+      "path": "firmware.bin",
+      "size": 123456,
+      "sha256": "<firmware-sha256>"
+    },
+    "littlefs": {
+      "path": "littlefs.bin",
+      "size": 456789,
+      "sha256": "<littlefs-sha256>"
+    }
+  }
 }
 ```
 
----
+Required fields for current updater behavior:
 
-## 📋 Implementation Checklist for #6
+- `version`
+- `description`
+- `firmware`
+- `littlefs`
+- `secure_version`
+- `artifacts.firmware.path`
+- `artifacts.firmware.size`
+- `artifacts.firmware.sha256`
+- `artifacts.littlefs.path`
+- `artifacts.littlefs.size`
+- `artifacts.littlefs.sha256`
 
-When implementing OTA update feature in firmware:
+## Release Tree
 
-### Phase 1: Integration
-- [ ] Add `#include "ota_updater.h"` to main SC_WM.ino
-- [ ] Create global `OTAUpdater otaUpdater` instance
-- [ ] Call `otaUpdater.begin()` in `setup()`
-- [ ] Add periodic `otaUpdater.checkForUpdates()` calls in main loop
-- [ ] Add OTA message handlers in WebSocket handler
-
-### Phase 2: Web Interface
-- [ ] Integrate OTA_UI_COMPONENT.html into configuration.html
-- [ ] Add OTA status fields to DisplayState
-- [ ] Handle WebSocket messages: "checkOTAUpdates", "startOTAUpdate", "cancelOTAUpdate"
-- [ ] Update JavaScript to display progress and status
-
-### Phase 3: Safety Features
-- [ ] Add SPIFFS update support (`spiffs.bin`)
-- [ ] Implement rollback on boot failure
-- [ ] Add firmware signature verification (optional but recommended)
-- [ ] Logging of update history to SPIFFS
-
-### Phase 4: Testing
-- [ ] Manual test with local server
-- [ ] Test with GitHub repository
-- [ ] Test failed download recovery
-- [ ] Test device reboot and reconnection
-- [ ] Verify no loss of settings during update
-
----
-
-## 🔐 Security Considerations
-
-### Current Implementation
-- ✅ HTTPS for GitHub downloads (automatic via raw.githubusercontent.com)
-- ✅ Public repository (verified before download)
-- ✅ Version verification via manifest
-
-### Recommended Enhancements
-- ⏳ Add firmware signature verification (RSA/ECDSA)
-- ⏳ Implement rollback mechanism if boot fails
-- ⏳ Use secure boot if available on ESP32
-- ⏳ Add update notification/authorization
-
----
-
-## 📂 File Locations
-
-```
-Main Firmware (Original):
-  /home/jonathan/Downloads/SC_WiFi_toWM---Copy-SunnyDay_AntiG4th-main/
-
-OTA Repository:
-  /home/jonathan/Downloads/SC_WM_OTA/
-  
-OTA Framework Files:
-  /home/jonathan/Downloads/SC_WiFi_toWM---Copy-SunnyDay_AntiG4th-main/
-  ├── src/network/ota_updater.h
-  ├── src/network/ota_updater.cpp
-  └── src/network/OTA_UI_COMPONENT.html
+```text
+releases/
+├── latest/
+│   ├── firmware.bin
+│   ├── littlefs.bin
+│   └── manifest.json
+├── vX.Y.Z/
+│   ├── firmware.bin
+│   ├── littlefs.bin
+│   └── manifest.json
+└── older v*/ folders
 ```
 
----
+`releases/latest/` is the active OTA pointer. Versioned folders are historical snapshots.
 
-## 🌐 GitHub URLs (After Setup)
+## Release Procedure
 
-```
-Repository:   https://github.com/Luckysin13/SC_WM_OTA
-Release:      https://github.com/Luckysin13/SC_WM_OTA/releases
-Manifest:     https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/manifest.json
-Firmware URL: https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/firmware.bin
-SPIFFS URL:   https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/v1.0.0/spiffs.bin
-```
+### Manual
 
----
+1. Update `CMakeLists.txt` version.
+2. Update `data/manifest.json` version.
+3. Update service worker tokens in the HTML files under `data/`.
+4. Update the release-facing docs before publishing artifacts.
+5. Run `pio run`.
+6. Run `pio run -t buildfs`.
+7. Copy the resulting `firmware.bin` and `littlefs.bin` to:
+   - `releases/latest/`
+   - `releases/vX.Y.Z/`
+8. Update both manifest files with exact sizes and SHA-256 values.
+9. Push the repository to GitHub with the refreshed docs and OTA artifacts in the same repo state.
+10. Verify OTA check behavior from a device.
 
-## 📖 How OTA Update Flow Works
+### Scripted
 
-```
-1. Device boots & connects to WiFi
-   ↓
-2. WebSocket client loaded on browser
-   ↓
-3. User clicks "Check for Updates" in configuration page
-   ↓
-4. Browser sends "checkOTAUpdates" to device via WebSocket
-   ↓
-5. Device fetches manifest.json from GitHub
-   ↓
-6. Compare version: "1.0.0" (current) vs "1.0.1" (GitHub)
-   ↓
-7. If newer available, display "Update Available" with details
-   ↓
-8. User clicks "Download & Install"
-   ↓
-9. Device downloads firmware.bin from GitHub (~1 MB)
-   ↓
-10. Verify checksum & apply update using ESP32 Update API
-    ↓
-11. Reboot with new firmware
-    ↓
-12. Browser detects disconnect, attempts reconnect
-    ↓
-13. Device boots new firmware, shows success page
+```bash
+scripts/ota_release.sh --version X.Y.Z
 ```
 
----
+Use the script when publishing to the dedicated OTA repository path configured by `OTA_REPO_DIR`. The script should update current release docs before it copies OTA artifacts or pushes GitHub state.
 
-## 🎯 Success Criteria
+## Verification
 
-**Task #6 Complete When:**
-1. ✅ OTA repository created on GitHub (PUBLIC)
-2. ✅ Firmware binary available for download via raw URLs
-3. ✅ `ota_updater` integrated into main firmware
-4. ✅ Web interface shows update status
-5. ✅ Manual update check works
-6. ✅ Automatic update download/install works
-7. ✅ Device successfully reboots with new firmware
-8. ✅ Settings/data preserved after update
-9. ✅ Rollback works if update fails
+After a release update:
 
----
+- `pio run` succeeds.
+- `pio run -t buildfs` succeeds.
+- `releases/latest/manifest.json` is valid JSON.
+- Hashes in both manifests match the binaries in their folders.
+- The configuration page still reports OTA state correctly.
+- Devices can fetch the `latest` manifest and identify a newer version when appropriate.
 
-## 📞 Troubleshooting
+## Notes on Historical Content
 
-### Download fails, can't connect to GitHub
-- Check WiFi is working
-- Verify GitHub URLs are accessible from device
-- Check firewall isn't blocking raw.githubusercontent.com
+Older release folders may use legacy manifest schemas or list features that are no longer present in the current firmware. Keep them as historical archives unless you explicitly intend to rewrite old releases.
 
-### Update fails after download
-- Ensure device has 50% free SPIFFS space
-- Check device power supply is stable
-- Verify manifest.json checksum matches
-
-### Device won't boot after update
-- Connect via USB to check serial output
-- Upload previous known-good firmware via USB
-- May indicate corrupted flash - try factory reset
-
-### Version check shows wrong version
-- Clear browser cache (Ctrl+Shift+R)
-- Verify manifest.json on GitHub has correct version
-- Check device firmware version via serial console
-
----
-
-## ✅ All Files Ready
-
-The following are now in place:
-
-```
-✅ OTA Repository structure
-✅ Compiled firmware binaries (v1.0.0)
-✅ Manifest and documentation
-✅ C++ OTA updater classes
-✅ Web UI component for OTA updates
-✅ Setup instructions and automation script
-✅ This comprehensive guide
-```
-
-**Next Action**: 
-1. Create GitHub Personal Access Token
-2. Run `./setup_github.sh <TOKEN>` in SC_WM_OTA directory
-3. Verify repository is public on GitHub
-4. Proceed with OTA firmware implementation in #6
-
----
-
-**Prepared by**: GitHub Copilot  
-**Date**: 2026-01-16  
-**Version**: 1.0  
-**Status**: Ready for GitHub Push
+Last updated: 2026-03-14

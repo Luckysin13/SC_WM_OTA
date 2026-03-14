@@ -1,152 +1,158 @@
-<<<<<<< HEAD
-# SC_WM_OTA
-Over The Air Firmware Updates
-=======
-# SC_WM OTA (Over-The-Air) Firmware Repository
+# SC_WM OTA Firmware Repository
 
-Official firmware release repository for the Smoker Controller - WiFi Module (SC_WM).
+This repository contains the current SC_WM firmware source, web assets, OTA updater implementation, and published OTA release artifacts for the ESP32-based smoker controller.
 
-## Overview
+## Current Release
 
-This repository contains compiled firmware binaries for remote update of SC_WM smoker controllers via Over-The-Air (OTA) updates through the web interface.
+- Current source version: `3.0.5`
+- Latest OTA manifest: `releases/latest/manifest.json`
+- Current versioned OTA release: `releases/v3.0.5/`
+- Filesystem format: LittleFS
 
-## Directory Structure
+### Release Artifacts
 
-```
-releases/
-├── v1.0.0/
-│   ├── firmware.bin      (Main application firmware)
-│   ├── spiffs.bin        (Web interface and data files)
-│   └── manifest.json     (Version metadata and checksums)
-└── [future versions...]
-```
+- `releases/latest/firmware.bin`
+- `releases/latest/littlefs.bin`
+- `releases/latest/manifest.json`
+- `releases/v3.0.4/firmware.bin`
+- `releases/v3.0.4/littlefs.bin`
+- `releases/v3.0.4/manifest.json`
 
-## Latest Version
+### 3.0.4 Notes
 
-**Current Release**: v1.0.0
+- Refreshed OTA release metadata and repository documentation.
+- Aligned the release tree with the current firmware and LittleFS artifacts.
+- Removed the dormant `Pit Temp Low` alarm stub.
+- Removed `Open Lid Detection` from firmware, protocol, and UI.
 
-### Features
-- ✅ Lid Open Detection
-- ✅ PID Autotuning (Ziegler-Nichols)
-- ✅ Ramp-to-Done (Keep Warm mode)
-- ✅ Predictive Time-to-Done Estimation
-- ✅ WebSocket Real-time Updates
-- ✅ Temperature Calibration Offsets
-- ✅ Network Configuration (STA/AP modes)
+## Repository Layout
 
-## Installation / Updating
-
-### Via Web Interface (OTA)
-1. Navigate to the SC_WM web interface at `http://<device-ip>/configuration.html`
-2. Look for "Check for Updates" or "Update Firmware" section
-3. The device will query this repository for the latest version
-4. If updates available, click "Update" to initiate OTA update
-5. Device will download and apply the update (takes ~2 minutes)
-6. Device automatically reboots after successful update
-
-### Manual Update (USB)
-If OTA is not available, use PlatformIO:
-```bash
-pio run -t upload --upload-port /dev/ttyUSB0
-pio run -t uploadfs --upload-port /dev/ttyUSB0
+```text
+.
+├── data/                    Web UI files packed into LittleFS
+├── releases/
+│   ├── latest/              OTA pointers used by devices in the field
+│   ├── v1.0.0/ ...          Historical releases
+│   └── v3.0.4/              Current versioned release
+├── scripts/
+│   ├── ota_release.sh       Release helper for publishing OTA artifacts
+│   ├── sign_firmware.py     Post-build signing helper
+│   └── ensure_signature_s.py
+├── src/
+│   ├── control/             PID, state, history, temperature logic
+│   ├── network/             WiFi, WebSocket, OTA updater
+│   └── ...
+├── CMakeLists.txt           Project version source of truth for firmware
+├── platformio.ini           PlatformIO environment and filesystem config
+└── setup_github.sh          Helper for pushing this repo to GitHub
 ```
 
-## File Descriptions
+## Current Features
 
-### firmware.bin
-- Main application binary
-- Size: ~1 MB
-- Contains: PID controller, WebSocket handler, temperature management
-- Flashed to address 0x10000 in ESP32 partition table
+- OTA update checks and downloads via GitHub raw content.
+- Signed firmware build pipeline.
+- LittleFS web interface packaging.
+- PID autotuning.
+- Keep Warm / Done Alarm workflow.
+- Temperature history retention and graphing.
+- WiFi STA/AP operation with WebSocket UI updates.
+- Temperature calibration offsets.
 
-### spiffs.bin
-- SPIFFS filesystem image
-- Size: ~1.4 MB
-- Contains: HTML pages, CSS, JavaScript, configuration files
-- Flashed to address 0x290000 in ESP32 partition table
+## Build Commands
 
-### manifest.json
-- Version metadata and checksums
-- Used by OTA update system to verify firmware integrity
-- Contains version, timestamp, feature list, changelog
-
-## Version History
-
-### v1.0.0 (2026-01-16)
-- Initial OTA release
-- Core features: Temperature control, PID tuning, Time-to-Done prediction
-- Network modes: STA (WiFi) and AP (Configuration portal)
-- WebSocket live updates to web dashboard
-
-## Hardware Requirements
-
-- **Device**: ESP32-WROOM-32D (or compatible)
-- **Memory**: 4 MB Flash minimum
-- **Network**: WiFi 802.11 b/g/n
-- **Sensors**: 2× DS18B20 Temperature Probes
-- **Actuator**: PWM-controlled Fan (3-pin)
-
-## Checksum Verification
-
-To verify firmware integrity after download:
+### Firmware
 
 ```bash
-# Calculate SHA256
-sha256sum releases/v1.0.0/firmware.bin
-sha256sum releases/v1.0.0/spiffs.bin
+pio run
 ```
 
-Compare with checksums in `manifest.json`.
-
-## Development
-
-To contribute or compile custom firmware:
+### LittleFS Image
 
 ```bash
-git clone https://github.com/Luckysin13/SC_WM.git
-cd SC_WM
-pio run         # Build
-pio run -t upload --upload-port /dev/ttyUSB0  # Deploy
+pio run -t buildfs
 ```
 
-## Troubleshooting
+### Upload to Device
 
-### OTA Update Fails
-1. Check WiFi connection stability
-2. Ensure device has 50% free SPIFFS space
-3. Check browser console for error messages
-4. Try manual update via USB if OTA repeatedly fails
+```bash
+pio run -t upload --upload-port /dev/ttyUSB1
+pio run -t uploadfs --upload-port /dev/ttyUSB1
+```
 
-### Device Doesn't Boot After Update
-1. Connect via USB and check serial output (115200 baud)
-2. If corrupted, perform factory reset (see documentation)
-3. Roll back to previous version via manual USB update
+Adjust the upload port if your device is not on `/dev/ttyUSB1`.
 
-### Version Mismatch
-Device keeps reverting to old version:
-1. Clear browser cache
-2. Hard refresh configuration page (Ctrl+Shift+R)
-3. Check manifest.json for version conflicts
+## OTA Operation
 
-## Security Notes
+The device checks:
 
-- ⚠️ OTA updates should only be obtained from trusted sources
-- 🔒 Consider HTTPS for production deployments
-- 🔐 Implement firmware signature verification (future enhancement)
-- 🛡️ Regularly update to latest version for security patches
+- `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/manifest.json`
 
-## Support & Issues
+The manifest points to:
 
-- 📧 Report issues on GitHub Issues page
-- 🐛 Include version number and error logs in bug reports
-- 💡 Feature requests welcome via GitHub Discussions
+- `firmware.bin`
+- `littlefs.bin`
 
-## License
+The OTA updater verifies file size and SHA-256 values from the manifest before marking an update as successful.
 
-Firmware and OTA repository structure are part of the SC_WM project.
+## Release Workflow
 
----
+### Recommended
 
-**Last Updated**: 2026-01-16
-**Repository**: https://github.com/Luckysin13/SC_WM_OTA
->>>>>>> 1e26b57 (Initial OTA release v1.0.0 with firmware binaries)
+Update the release-facing docs first, then use the helper script to validate the docs, build the artifacts, and publish the full GitHub repo state:
+
+```bash
+scripts/ota_release.sh --version X.Y.Z
+```
+
+The helper updates current release docs, verifies they are aligned, and refuses to copy OTA artifacts into `releases/latest/` or push GitHub state until the docs are ready.
+
+### Manual
+
+1. Bump the firmware version in `CMakeLists.txt`.
+2. Bump the PWA version in `data/manifest.json`.
+3. Update the service worker version tokens in the HTML pages under `data/`.
+4. Update the release-facing docs so the repo describes the new release before publishing it.
+5. Build firmware with `pio run`.
+6. Build LittleFS with `pio run -t buildfs`.
+7. Copy the resulting `firmware.bin` and `littlefs.bin` into both:
+   - `releases/latest/`
+   - `releases/vX.Y.Z/`
+8. Update both manifests with the correct version, sizes, and SHA-256 hashes.
+9. Verify OTA update checks against `releases/latest/manifest.json`.
+10. Commit and push the updated docs and release artifacts together.
+
+## GitHub Publishing
+
+If this repository is not already connected to GitHub, use:
+
+```bash
+./setup_github.sh <YOUR_GITHUB_PAT>
+```
+
+Expected repository:
+
+- `https://github.com/Luckysin13/SC_WM_OTA`
+
+Raw OTA URLs:
+
+- `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/manifest.json`
+- `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/firmware.bin`
+- `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/littlefs.bin`
+
+When publishing a release, the GitHub repo should receive the refreshed top-level docs in the same push as the updated `releases/latest/` and `releases/vX.Y.Z/` artifacts.
+
+## Verification Checklist
+
+- `pio run` completes successfully.
+- `pio run -t buildfs` completes successfully.
+- `releases/latest/manifest.json` matches the current artifact hashes.
+- `releases/vX.Y.Z/manifest.json` matches the current artifact hashes.
+- `data/manifest.json` matches the current web version.
+- The refreshed top-level release docs are included in the same commit as the OTA artifact update.
+- Devices can still fetch and parse `releases/latest/manifest.json`.
+
+## Historical Releases
+
+Older `releases/v*/` folders are kept as historical artifacts. They may contain older metadata formats or features that no longer exist in the current firmware. Update historical release folders only if you intentionally want to rewrite history.
+
+Last updated: 2026-03-14
