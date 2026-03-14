@@ -98,13 +98,13 @@ The OTA updater verifies file size and SHA-256 values from the manifest before m
 
 ### Recommended
 
-Update the release-facing docs first, then use the helper script to validate the docs, build the artifacts, and publish the full GitHub repo state:
+Update the OTA metadata and README, then use the helper script to validate the release files, build the artifacts, and publish only the OTA-required files plus this update guide:
 
 ```bash
 scripts/ota_release.sh --version X.Y.Z
 ```
 
-The helper updates current release docs, verifies they are aligned, and refuses to copy OTA artifacts into `releases/latest/` or push GitHub state until the docs are ready.
+The helper updates the current README and OTA version metadata, verifies they are aligned, and refuses to copy OTA artifacts into `releases/latest/` or push GitHub state until those release files are ready.
 On a successful scripted release, it also stages and commits the release changes automatically with a generated commit message.
 
 ### Manual
@@ -112,7 +112,7 @@ On a successful scripted release, it also stages and commits the release changes
 1. Bump the firmware version in `CMakeLists.txt`.
 2. Bump the PWA version in `data/manifest.json`.
 3. Update the service worker version tokens in the HTML pages under `data/`.
-4. Update the release-facing docs so the repo describes the new release before publishing it.
+4. Update `README.md` so the repo describes the new release before publishing it.
 5. Build firmware with `pio run`.
 6. Build LittleFS with `pio run -t buildfs`.
 7. Copy the resulting `firmware.bin` and `littlefs.bin` into both:
@@ -120,7 +120,7 @@ On a successful scripted release, it also stages and commits the release changes
    - `releases/vX.Y.Z/`
 8. Update both manifests with the correct version, sizes, and SHA-256 hashes.
 9. Verify OTA update checks against `releases/latest/manifest.json`.
-10. Commit and push the updated docs and release artifacts together.
+10. Commit and push the updated README and release artifacts together.
 
 ## GitHub Publishing
 

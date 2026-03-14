@@ -18,12 +18,16 @@ REPO_ROOT="$(pwd -P)"
 TODAY="$(date +%Y-%m-%d)"
 declare -a REQUIRED_RELEASE_DOCS=(
   README.md
-  START_HERE.md
-  SETUP_INSTRUCTIONS.md
-  IMPLEMENTATION_GUIDE.md
-  MASTER_CHECKLIST.md
-  COMPLETION_SUMMARY.md
-  FILE_MANIFEST.md
+)
+declare -a SOURCE_RELEASE_STAGE_PATHS=(
+  CMakeLists.txt
+  README.md
+  data/manifest.json
+  data/index.html
+  data/alarms.html
+  data/graph.html
+  data/configuration.html
+  data/wifi.html
 )
 
 usage() {
@@ -134,7 +138,7 @@ restore_pwa_files() {
 backup_release_docs() {
   local file
   local backup
-  for file in README.md START_HERE.md IMPLEMENTATION_GUIDE.md COMPLETION_SUMMARY.md; do
+  for file in "${REQUIRED_RELEASE_DOCS[@]}"; do
     backup="$(mktemp)"
     cp "$file" "$backup"
     RELEASE_DOC_BACKUPS+=("$file:$backup")
@@ -208,105 +212,6 @@ replace_or_fail(
     r"^Last updated: .*?$",
     f"Last updated: {release_date}",
 )
-
-replace_or_fail(
-    root / "START_HERE.md",
-    r"^- Firmware source version: `[^`]+`$",
-    f"- Firmware source version: `{version}`",
-)
-replace_or_fail(
-    root / "START_HERE.md",
-    r"^- Current OTA release: `releases/v[^`]+/`$",
-    f"- Current OTA release: `releases/v{version}/`",
-)
-replace_or_fail(
-    root / "START_HERE.md",
-    r"^Last updated: .*?$",
-    f"Last updated: {release_date}",
-)
-
-replace_or_fail(
-    root / "IMPLEMENTATION_GUIDE.md",
-    r"^- Current published version in this repository: `[^`]+`$",
-    f"- Current published version in this repository: `{version}`",
-)
-replace_or_fail(
-    root / "IMPLEMENTATION_GUIDE.md",
-    r"^Last updated: .*?$",
-    f"Last updated: {release_date}",
-)
-
-summary_path = root / "COMPLETION_SUMMARY.md"
-replace_or_fail(
-    summary_path,
-    r"^The repository is aligned to the current `[^`]+` firmware and OTA release state\.$",
-    f"The repository is aligned to the current `{version}` firmware and OTA release state.",
-)
-replace_or_fail(
-    summary_path,
-    r"^- Firmware version aligned to `[^`]+`\.$",
-    f"- Firmware version aligned to `{version}`.",
-)
-replace_or_fail(
-    summary_path,
-    r"^- Web app version aligned to `[^`]+`\.$",
-    f"- Web app version aligned to `{version}`.",
-)
-replace_or_fail(
-    summary_path,
-    r"^- Current versioned OTA release snapshot: `releases/v[^`]+/`\.$",
-    f"- Current versioned OTA release snapshot: `releases/v{version}/`.",
-)
-replace_or_fail(
-    summary_path,
-    r"^- Firmware size: `[^`]+`$",
-    f"- Firmware size: `{firmware_size}`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- LittleFS size: `[^`]+`$",
-    f"- LittleFS size: `{littlefs_size}`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- Firmware SHA-256: `[^`]+`$",
-    f"- Firmware SHA-256: `{firmware_sha}`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- LittleFS SHA-256: `[^`]+`$",
-    f"- LittleFS SHA-256: `{littlefs_sha}`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- `releases/v[^`]+/manifest\.json`$",
-    f"- `releases/v{version}/manifest.json`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- `releases/v[^`]+/firmware\.bin`$",
-    f"- `releases/v{version}/firmware.bin`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- `releases/v[^`]+/littlefs\.bin`$",
-    f"- `releases/v{version}/littlefs.bin`",
-)
-replace_or_fail(
-    summary_path,
-    r"^- `pio run` completed successfully on `[^`]+`\.$",
-    f"- `pio run` completed successfully on `{version}`.",
-)
-replace_or_fail(
-    summary_path,
-    r"^- `pio run -t buildfs` completed successfully on `[^`]+`\.$",
-    f"- `pio run -t buildfs` completed successfully on `{version}`.",
-)
-replace_or_fail(
-    summary_path,
-    r"^Last updated: .*?$",
-    f"Last updated: {release_date}",
-)
 PY
 }
 
@@ -331,12 +236,6 @@ littlefs_sha = os.environ["EXPECTED_LITTLEFS_SHA256"]
 
 required_files = [
     "README.md",
-    "START_HERE.md",
-    "SETUP_INSTRUCTIONS.md",
-    "IMPLEMENTATION_GUIDE.md",
-    "MASTER_CHECKLIST.md",
-    "COMPLETION_SUMMARY.md",
-    "FILE_MANIFEST.md",
 ]
 for relative in required_files:
     if not (root / relative).is_file():
@@ -347,23 +246,6 @@ checks = {
     "README.md": [
         rf"^- Current source version: `{re.escape(version)}`$",
         rf"^- Current versioned OTA release: `releases/v{re.escape(version)}/`$",
-    ],
-    "START_HERE.md": [
-        rf"^- Firmware source version: `{re.escape(version)}`$",
-        rf"^- Current OTA release: `releases/v{re.escape(version)}/`$",
-    ],
-    "IMPLEMENTATION_GUIDE.md": [
-        rf"^- Current published version in this repository: `{re.escape(version)}`$",
-    ],
-    "COMPLETION_SUMMARY.md": [
-        rf"^The repository is aligned to the current `{re.escape(version)}` firmware and OTA release state\.$",
-        rf"^- Firmware version aligned to `{re.escape(version)}`\.$",
-        rf"^- Web app version aligned to `{re.escape(version)}`\.$",
-        rf"^- Current versioned OTA release snapshot: `releases/v{re.escape(version)}/`\.$",
-        rf"^- Firmware size: `{re.escape(firmware_size)}`$",
-        rf"^- LittleFS size: `{re.escape(littlefs_size)}`$",
-        rf"^- Firmware SHA-256: `{re.escape(firmware_sha)}`$",
-        rf"^- LittleFS SHA-256: `{re.escape(littlefs_sha)}`$",
     ],
 }
 
@@ -388,8 +270,6 @@ sync_publish_repo_docs() {
   for file in "${REQUIRED_RELEASE_DOCS[@]}"; do
     cp "$file" "$target_root/$file"
   done
-  cp setup_github.sh "$target_root/setup_github.sh"
-  chmod 755 "$target_root/setup_github.sh"
 }
 
 verify_publish_repo_docs() {
@@ -412,6 +292,8 @@ verify_publish_repo_docs() {
 commit_repo_changes() {
   local repo_dir="$1"
   local commit_message="$2"
+  shift 2
+  local -a stage_paths=("$@")
 
   if [[ ! -d "$repo_dir/.git" ]]; then
     echo "Cannot commit changes: $repo_dir is not a git repository"
@@ -420,7 +302,11 @@ commit_repo_changes() {
 
   (
     cd "$repo_dir"
-    git add -A
+    if [[ "${#stage_paths[@]}" -eq 0 ]]; then
+      echo "Cannot commit changes: no stage paths specified for $repo_dir"
+      exit 1
+    fi
+    git add -- "${stage_paths[@]}"
     git diff --cached --quiet || git commit -m "$commit_message"
   )
 }
@@ -771,11 +657,25 @@ RESTORE_PWA_FILES=0
 RESTORE_RELEASE_DOCS=0
 
 cd "$OTA_REPO_DIR"
-commit_repo_changes "$PWD" "Release v$VERSION (docs + signed firmware + LittleFS)"
+declare -a OTA_REPO_STAGE_PATHS=(
+  README.md
+  "releases/latest/firmware.bin"
+  "releases/latest/littlefs.bin"
+  "releases/latest/manifest.json"
+  "releases/v$VERSION/firmware.bin"
+  "releases/v$VERSION/littlefs.bin"
+  "releases/v$VERSION/manifest.json"
+)
+if [[ "$(canonical_dir "$PWD")" == "$REPO_ROOT" ]]; then
+  commit_repo_changes "$PWD" "Release v$VERSION (OTA artifacts + README)" \
+    "${SOURCE_RELEASE_STAGE_PATHS[@]}" "${OTA_REPO_STAGE_PATHS[@]}"
+else
+  commit_repo_changes "$PWD" "Release v$VERSION (OTA artifacts + README)" "${OTA_REPO_STAGE_PATHS[@]}"
+fi
 git push origin HEAD:main
 
 if [[ "$(canonical_dir "$PWD")" != "$REPO_ROOT" ]]; then
-  commit_repo_changes "$REPO_ROOT" "Prepare release v$VERSION source update"
+  commit_repo_changes "$REPO_ROOT" "Prepare release v$VERSION source update" "${SOURCE_RELEASE_STAGE_PATHS[@]}"
 fi
 
 echo "Release v$VERSION completed."
