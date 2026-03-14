@@ -81,6 +81,6 @@ Before pushing, confirm:
 
 - The OTA updater uses `releases/latest/manifest.json` as the primary entry point.
 - Historical release folders remain in place for rollback and traceability.
-- The current repository uses LittleFS, not SPIFFS.
+- The current repository uses LittleFS.
 
 Last updated: 2026-03-14

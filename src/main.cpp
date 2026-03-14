@@ -558,10 +558,10 @@ void loop() {
         break;
       case OTAUpdater::DOWNLOADING:
         otaJson += "\"otaStatus\":\"downloading\",\"otaProgress\":" + String(otaUpdater.getProgress());
-        otaJson += ",\"otaSpiffsProgress\":" + String(otaUpdater.getSpiffsProgress());
+        otaJson += ",\"otaLittlefsProgress\":" + String(otaUpdater.getLittlefsProgress());
         otaJson += ",\"otaFirmwareProgress\":" + String(otaUpdater.getFirmwareProgress());
-        if (otaUpdater.getPhase() == OTAUpdater::PHASE_SPIFFS) {
-          otaJson += ",\"otaPhase\":\"spiffs\"";
+        if (otaUpdater.getPhase() == OTAUpdater::PHASE_LITTLEFS) {
+          otaJson += ",\"otaPhase\":\"littlefs\"";
         } else if (otaUpdater.getPhase() == OTAUpdater::PHASE_FIRMWARE) {
           otaJson += ",\"otaPhase\":\"firmware\"";
         } else {
@@ -570,10 +570,10 @@ void loop() {
         break;
       case OTAUpdater::INSTALLING:
         otaJson += "\"otaStatus\":\"installing\",\"otaProgress\":" + String(otaUpdater.getProgress());
-        otaJson += ",\"otaSpiffsProgress\":" + String(otaUpdater.getSpiffsProgress());
+        otaJson += ",\"otaLittlefsProgress\":" + String(otaUpdater.getLittlefsProgress());
         otaJson += ",\"otaFirmwareProgress\":" + String(otaUpdater.getFirmwareProgress());
-        if (otaUpdater.getPhase() == OTAUpdater::PHASE_SPIFFS) {
-          otaJson += ",\"otaPhase\":\"spiffs\"";
+        if (otaUpdater.getPhase() == OTAUpdater::PHASE_LITTLEFS) {
+          otaJson += ",\"otaPhase\":\"littlefs\"";
         } else if (otaUpdater.getPhase() == OTAUpdater::PHASE_FIRMWARE) {
           otaJson += ",\"otaPhase\":\"firmware\"";
         } else {

@@ -30,7 +30,7 @@ public:
 
   enum UpdatePhase {
     PHASE_NONE = 0,
-    PHASE_SPIFFS = 1,
+    PHASE_LITTLEFS = 1,
     PHASE_FIRMWARE = 2
   };
 
@@ -51,17 +51,17 @@ private:
   UpdatePhase phase = PHASE_NONE;
   String availableVersion = "";
   String firmwareUrl = "";
-  String spiffsUrl = "";
+  String littlefsUrl = "";
   String availableDescription = "";
   uint32_t availableSecureVersion = 0;
   size_t expectedFirmwareSize = 0;
-  size_t expectedSpiffsSize = 0;
+  size_t expectedLittlefsSize = 0;
   String expectedFirmwareSha256 = "";
-  String expectedSpiffsSha256 = "";
+  String expectedLittlefsSha256 = "";
   String updateError = "";
   String currentVersionOverride = "";
   int updateProgress = 0; // 0-100
-  int spiffsProgress = 0;  // 0-100
+  int littlefsProgress = 0;  // 0-100
   int firmwareProgress = 0; // 0-100
 
 public:
@@ -102,11 +102,11 @@ public:
 
   // Get URLs for latest artifacts
   String getFirmwareUrl() const { return firmwareUrl; }
-  String getSpiffsUrl() const { return spiffsUrl; }
+  String getLittlefsUrl() const { return littlefsUrl; }
   size_t getExpectedFirmwareSize() const { return expectedFirmwareSize; }
-  size_t getExpectedSpiffsSize() const { return expectedSpiffsSize; }
+  size_t getExpectedLittlefsSize() const { return expectedLittlefsSize; }
   String getExpectedFirmwareSha256() const { return expectedFirmwareSha256; }
-  String getExpectedSpiffsSha256() const { return expectedSpiffsSha256; }
+  String getExpectedLittlefsSha256() const { return expectedLittlefsSha256; }
 
   // Get error message if update failed
   String getErrorMessage() const { return updateError; }
@@ -116,7 +116,7 @@ public:
 
   // Get update phase and per-artifact progress
   UpdatePhase getPhase() const { return phase; }
-  int getSpiffsProgress() const { return spiffsProgress; }
+  int getLittlefsProgress() const { return littlefsProgress; }
   int getFirmwareProgress() const { return firmwareProgress; }
 
   // Initiate firmware download and installation
@@ -135,14 +135,14 @@ public:
 private:
   // Fetch and parse manifest.json from GitHub
   bool fetchManifest(String &outVersion, String &outDescription,
-                     String &outFirmware, String &outSpiffs,
+                     String &outFirmware, String &outLittlefs,
                      uint32_t &outSecureVersion);
 
   // Download firmware binary and apply update
   bool downloadAndUpdate(const String &firmwareUrl);
 
   // Download LittleFS binary and apply update
-  bool downloadAndUpdateSpiffs(const String &spiffsUrl);
+  bool downloadAndUpdateLittlefs(const String &littlefsUrl);
 };
 
 #endif // OTA_UPDATER_H

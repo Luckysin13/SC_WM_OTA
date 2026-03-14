@@ -4,9 +4,9 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 
 ## Current Release
 
-- Current source version: `3.0.8`
+- Current source version: `3.0.9`
 - Latest OTA manifest: `releases/latest/manifest.json`
-- Current versioned OTA release: `releases/v3.0.8/`
+- Current versioned OTA release: `releases/v3.0.9/`
 - Filesystem format: LittleFS
 
 ### Release Artifacts

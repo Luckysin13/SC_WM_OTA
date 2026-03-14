@@ -1,1 +1,45 @@
-NotPlatformIOProjectError: Not a PlatformIO project. `platformio.ini` file has not been found in current working directory (/home/jonathan/Downloads/SC_WM_OTA). To initialize new project please use `platformio project init` command
+Processing esp32dev (platform: espressif32; board: esp32dev; framework: espidf)
+--------------------------------------------------------------------------------
+Verbose mode can be enabled via `-v, --verbose` option
+[signing] Prepared /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/signature_verification_key.bin and /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/signature_verification_key.bin.S
+[signing] Prepared /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/bootloader/signature_verification_key.bin and /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/bootloader/signature_verification_key.bin.S
+[signing] Prepared /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/server_cert.pem and /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/server_cert.pem.S
+[signing] Prepared /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/server_key.pem and /home/jonathan/Documents/SC_WiFi_toWM---Copy-SunnyDay_AntiG5th-main-OTA-fixes/.pio/build/esp32dev/server_key.pem.S
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/esp32dev.html
+PLATFORM: Espressif 32 (6.13.0) > Espressif ESP32 Dev Module
+HARDWARE: ESP32 240MHz, 320KB RAM, 4MB Flash
+DEBUG: Current (cmsis-dap) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - framework-espidf @ 3.50503.0 (5.5.3) 
+ - tool-cmake @ 3.30.2 
+ - tool-esp-rom-elfs @ 0.0.1+20241011 
+ - tool-esptoolpy @ 2.41100.0 (4.11.0) 
+ - tool-mklittlefs @ 1.203.210628 (2.3) 
+ - tool-ninja @ 1.7.1 
+ - tool-riscv32-esp-elf-gdb @ 12.1.0+20221002 
+ - tool-xtensa-esp-elf-gdb @ 12.1.0+20221002 
+ - toolchain-esp32ulp @ 1.23800.240113 (2.38.0) 
+ - toolchain-xtensa-esp-elf @ 14.2.0+20251107
+Reading CMake configuration...
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 0 compatible libraries
+Scanning dependencies...
+No dependencies
+Building in release mode
+Building FS image from 'data' directory to .pio/build/esp32dev/littlefs.bin
+/redirect.html
+/style.css
+/configuration.html
+/index.html
+/script.js
+/graph.html
+/scriptwifi.js
+/alarms.html
+/sw.js
+/icon-192.svg
+/manifest.json
+/scriptchart.js
+/chart.umd.js
+/wifi.html
+========================= [SUCCESS] Took 9.09 seconds =========================

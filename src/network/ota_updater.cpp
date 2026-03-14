@@ -324,13 +324,13 @@ void OTAUpdater::checkForUpdates() {
 
   availableVersion = "";
   firmwareUrl = "";
-  spiffsUrl = "";
+  littlefsUrl = "";
   availableDescription = "";
   availableSecureVersion = 0;
   expectedFirmwareSize = 0;
-  expectedSpiffsSize = 0;
+  expectedLittlefsSize = 0;
   expectedFirmwareSha256 = "";
-  expectedSpiffsSha256 = "";
+  expectedLittlefsSha256 = "";
   updateError = "";
 
   status = CHECKING;
@@ -339,10 +339,10 @@ void OTAUpdater::checkForUpdates() {
   String newVersion = "";
   String description = "";
   String firmwareName = "";
-  String spiffsName = "";
+  String littlefsName = "";
   uint32_t secureVersion = 0;
 
-  if (!fetchManifest(newVersion, description, firmwareName, spiffsName,
+  if (!fetchManifest(newVersion, description, firmwareName, littlefsName,
                      secureVersion)) {
     status = FAILED;
     if (updateError.length() == 0) {
@@ -357,7 +357,7 @@ void OTAUpdater::checkForUpdates() {
   if (versionCompare > 0) {
     availableVersion = newVersion;
     firmwareUrl = firmwareName;
-    spiffsUrl = spiffsName;
+    littlefsUrl = littlefsName;
     availableDescription = description;
     availableSecureVersion = secureVersion;
     status = UPDATE_AVAILABLE;
@@ -384,14 +384,14 @@ bool OTAUpdater::startUpdate() {
 
   status = DOWNLOADING;
   updateProgress = 0;
-  spiffsProgress = 0;
+  littlefsProgress = 0;
   firmwareProgress = 0;
   phase = PHASE_NONE;
   Serial.println("[OTA] Starting firmware update...");
 
-  if (spiffsUrl.length() > 0) {
+  if (littlefsUrl.length() > 0) {
     Serial.println("[OTA] Updating LittleFS...");
-    if (!downloadAndUpdateSpiffs(spiffsUrl)) {
+    if (!downloadAndUpdateLittlefs(littlefsUrl)) {
       status = FAILED;
       Serial.printf("[OTA] LittleFS update failed: %s\n", updateError.c_str());
       return false;
@@ -445,7 +445,7 @@ void OTAUpdater::cancelUpdate() {
 void OTAUpdater::update() {}
 
 bool OTAUpdater::fetchManifest(String &outVersion, String &outDescription,
-                               String &outFirmware, String &outSpiffs,
+                               String &outFirmware, String &outLittlefs,
                                uint32_t &outSecureVersion) {
   outSecureVersion = 0;
 
@@ -500,10 +500,8 @@ bool OTAUpdater::fetchManifest(String &outVersion, String &outDescription,
     return false;
   }
 
-  if ((!extractArtifact(root.get(), artifacts, "littlefs", "littlefs",
-                        littlefsArtifact) &&
-       !extractArtifact(root.get(), artifacts, "spiffs", "spiffs",
-                        littlefsArtifact)) ||
+  if (!extractArtifact(root.get(), artifacts, "littlefs", "littlefs",
+                       littlefsArtifact) ||
       littlefsArtifact.path.length() == 0) {
     updateError = "Manifest missing filesystem artifact";
     return false;
@@ -515,15 +513,15 @@ bool OTAUpdater::fetchManifest(String &outVersion, String &outDescription,
   expectedFirmwareSha256 = hasArtifactMetadata(firmwareArtifact)
                                ? firmwareArtifact.sha256
                                : String();
-  expectedSpiffsSize = hasArtifactMetadata(littlefsArtifact)
-                           ? littlefsArtifact.size
-                           : 0;
-  expectedSpiffsSha256 = hasArtifactMetadata(littlefsArtifact)
-                             ? littlefsArtifact.sha256
-                             : String();
+  expectedLittlefsSize = hasArtifactMetadata(littlefsArtifact)
+                             ? littlefsArtifact.size
+                             : 0;
+  expectedLittlefsSha256 = hasArtifactMetadata(littlefsArtifact)
+                               ? littlefsArtifact.sha256
+                               : String();
 
   outFirmware = makeArtifactUrl(firmwareArtifact.path);
-  outSpiffs = makeArtifactUrl(littlefsArtifact.path);
+  outLittlefs = makeArtifactUrl(littlefsArtifact.path);
   return outFirmware.length() > 0;
 }
 
@@ -651,8 +649,8 @@ bool OTAUpdater::downloadAndUpdate(const String &firmwareUrl) {
   return true;
 }
 
-bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
-  Serial.printf("[OTA] Downloading LittleFS from: %s\n", spiffsUrl.c_str());
+bool OTAUpdater::downloadAndUpdateLittlefs(const String &littlefsUrl) {
+  Serial.printf("[OTA] Downloading LittleFS from: %s\n", littlefsUrl.c_str());
 
   const esp_partition_t *partition = esp_partition_find_first(
       ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_LITTLEFS, "littlefs");
@@ -680,7 +678,7 @@ bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
     return false;
   }
 
-  String downloadUrl = spiffsUrl;
+  String downloadUrl = littlefsUrl;
   downloadUrl += (downloadUrl.indexOf('?') >= 0 ? "&" : "?");
   downloadUrl += "t=" + String(static_cast<unsigned long>(millis()));
 
@@ -722,8 +720,8 @@ bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
     esp_http_client_cleanup(client);
     return false;
   }
-  if (expectedSpiffsSize > 0 && contentLength > 0 &&
-      static_cast<size_t>(contentLength) != expectedSpiffsSize) {
+  if (expectedLittlefsSize > 0 && contentLength > 0 &&
+      static_cast<size_t>(contentLength) != expectedLittlefsSize) {
     updateError = "LittleFS size mismatch";
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
@@ -737,7 +735,7 @@ bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
     return false;
   }
 
-  phase = PHASE_SPIFFS;
+  phase = PHASE_LITTLEFS;
   status = DOWNLOADING;
 
   std::vector<uint8_t> buffer(1024);
@@ -759,16 +757,16 @@ bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
     offset += static_cast<size_t>(bytesRead);
     written += static_cast<size_t>(bytesRead);
     if (contentLength > 0) {
-      spiffsProgress = static_cast<int>((written * 100U) /
-                                        static_cast<size_t>(contentLength));
+      littlefsProgress = static_cast<int>((written * 100U) /
+                                          static_cast<size_t>(contentLength));
     } else if (partition->size > 0) {
-      spiffsProgress = static_cast<int>((written * 100U) /
-                                        static_cast<size_t>(partition->size));
-      if (spiffsProgress > 99) {
-        spiffsProgress = 99;
+      littlefsProgress = static_cast<int>((written * 100U) /
+                                          static_cast<size_t>(partition->size));
+      if (littlefsProgress > 99) {
+        littlefsProgress = 99;
       }
     }
-    updateProgress = spiffsProgress;
+    updateProgress = littlefsProgress;
   }
 
   esp_http_client_close(client);
@@ -782,16 +780,16 @@ bool OTAUpdater::downloadAndUpdateSpiffs(const String &spiffsUrl) {
     updateError = "LittleFS download incomplete";
     return false;
   }
-  if (expectedSpiffsSize > 0 && written != expectedSpiffsSize) {
+  if (expectedLittlefsSize > 0 && written != expectedLittlefsSize) {
     updateError = "LittleFS size mismatch";
     return false;
   }
-  if (!partitionMatchesSha256(partition, expectedSpiffsSha256)) {
+  if (!partitionMatchesSha256(partition, expectedLittlefsSha256)) {
     updateError = "LittleFS checksum mismatch";
     return false;
   }
 
-  spiffsProgress = 100;
+  littlefsProgress = 100;
   updateProgress = 100;
   return true;
 }

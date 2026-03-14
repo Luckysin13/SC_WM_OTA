@@ -45,11 +45,6 @@ FIRMWARE_SIZE=$(stat -c%s .pio/build/esp32dev/firmware.bin 2>/dev/null || echo "
 FS_IMAGE_PATH=".pio/build/esp32dev/littlefs.bin"
 FS_LABEL="LittleFS"
 
-if [ ! -f "$FS_IMAGE_PATH" ]; then
-    FS_IMAGE_PATH=".pio/build/esp32dev/spiffs.bin"
-    FS_LABEL="SPIFFS"
-fi
-
 FS_SIZE=$(stat -c%s "$FS_IMAGE_PATH" 2>/dev/null || echo "0")
 
 if [ "$FIRMWARE_SIZE" -gt 100000 ]; then

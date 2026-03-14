@@ -390,7 +390,7 @@ function handleOTAStatus(data) {
     const updateBtn = document.getElementById('otaUpdateBtn');
     const currentVer = document.getElementById('otaCurrentVersion');
     const availableVer = document.getElementById('otaAvailableVersion');
-    const spiffsProgress = document.getElementById('otaSpiffsProgress');
+    const littlefsProgress = document.getElementById('otaLittlefsProgress');
     const firmwareProgress = document.getElementById('otaFirmwareProgress');
 
     if (currentVer && data.otaCurrentVersion) {
@@ -400,8 +400,8 @@ function handleOTAStatus(data) {
         availableVer.textContent = data.otaAvailableVersion;
     }
 
-    if (spiffsProgress && data.otaSpiffsProgress !== undefined) {
-        spiffsProgress.textContent = `${data.otaSpiffsProgress}%`;
+    if (littlefsProgress && data.otaLittlefsProgress !== undefined) {
+        littlefsProgress.textContent = `${data.otaLittlefsProgress}%`;
     }
 
     if (firmwareProgress && data.otaFirmwareProgress !== undefined) {
@@ -450,9 +450,9 @@ function handleOTAStatus(data) {
         stopOtaInfoPolling();
     } else if (data.otaStatus === 'downloading') {
         if (progressDetails) progressDetails.style.display = 'flex';
-        if (data.otaPhase === 'spiffs') {
-            status.textContent = `Downloading SPIFFS... (${data.otaSpiffsProgress || 0}%)`;
-            progress.style.width = `${data.otaSpiffsProgress || 0}%`;
+        if (data.otaPhase === 'littlefs') {
+            status.textContent = `Downloading firmware... (${data.otaLittlefsProgress || 0}%)`;
+            progress.style.width = `${data.otaLittlefsProgress || 0}%`;
         } else if (data.otaPhase === 'firmware') {
             status.textContent = `Downloading firmware... (${data.otaFirmwareProgress || 0}%)`;
             progress.style.width = `${data.otaFirmwareProgress || 0}%`;
@@ -466,9 +466,9 @@ function handleOTAStatus(data) {
         startOtaInfoPolling();
     } else if (data.otaStatus === 'installing') {
         if (progressDetails) progressDetails.style.display = 'flex';
-        if (data.otaPhase === 'spiffs') {
-            status.textContent = `Updating SPIFFS... (${data.otaSpiffsProgress || 0}%)`;
-            progress.style.width = `${data.otaSpiffsProgress || 0}%`;
+        if (data.otaPhase === 'littlefs') {
+            status.textContent = `Installing firmware... (${data.otaLittlefsProgress || 0}%)`;
+            progress.style.width = `${data.otaLittlefsProgress || 0}%`;
         } else if (data.otaPhase === 'firmware') {
             status.textContent = `Installing firmware... (${data.otaFirmwareProgress || 0}%)`;
             progress.style.width = `${data.otaFirmwareProgress || 0}%`;

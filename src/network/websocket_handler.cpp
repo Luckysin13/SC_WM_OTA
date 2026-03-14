@@ -324,10 +324,10 @@ void WebSocketHandler::handleMessage(const String &message, int clientFd) {
     if (otaUpdater.getStatus() == OTAUpdater::DOWNLOADING ||
       otaUpdater.getStatus() == OTAUpdater::INSTALLING) {
       otaJson += ",\"otaProgress\":" + String(otaUpdater.getProgress());
-      otaJson += ",\"otaSpiffsProgress\":" + String(otaUpdater.getSpiffsProgress());
+      otaJson += ",\"otaLittlefsProgress\":" + String(otaUpdater.getLittlefsProgress());
       otaJson += ",\"otaFirmwareProgress\":" + String(otaUpdater.getFirmwareProgress());
-      if (otaUpdater.getPhase() == OTAUpdater::PHASE_SPIFFS) {
-        otaJson += ",\"otaPhase\":\"spiffs\"";
+      if (otaUpdater.getPhase() == OTAUpdater::PHASE_LITTLEFS) {
+        otaJson += ",\"otaPhase\":\"littlefs\"";
       } else if (otaUpdater.getPhase() == OTAUpdater::PHASE_FIRMWARE) {
         otaJson += ",\"otaPhase\":\"firmware\"";
       } else {

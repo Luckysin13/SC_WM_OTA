@@ -7,7 +7,7 @@ This document describes the current OTA implementation and release mechanics in 
 - Firmware version source: `CMakeLists.txt` via `PROJECT_VER`
 - Web app version source: `data/manifest.json`
 - OTA entry point: `releases/latest/manifest.json`
-- Current published version in this repository: `3.0.8`
+- Current published version in this repository: `3.0.9`
 
 Devices compare the version reported by `PROJECT_VER` against the version from `releases/latest/manifest.json`.
 
