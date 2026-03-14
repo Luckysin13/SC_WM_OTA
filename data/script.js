@@ -643,16 +643,9 @@ function onMessage(event) {
         if (data.otaStatus !== undefined) {
             handleOTAStatus(data);
         }
-        // Handle lid detection alert
-        if (data.lid !== undefined) {
-            const lidAlert = document.getElementById('lidAlert');
-            if (lidAlert) {
-                lidAlert.style.display = data.lid ? 'flex' : 'none';
-            }
-        }
 
-        // Sync Alarm Checkboxes (boxValue 4-7)
-        ['boxValue4', 'boxValue5', 'boxValue6', 'boxValue7'].forEach(id => {
+        // Sync Alarm Checkboxes (boxValue 4 and 6)
+        ['boxValue4', 'boxValue6'].forEach(id => {
             const cb = document.getElementById(id);
             if (cb && data[id] !== undefined) {
                 cb.checked = (data[id] === 'true');
@@ -922,9 +915,7 @@ function isValidSetpoint(value) {
 // =============================================================================
 function updateCheckbox() {
     sendAlarmState('boxValue4', 'KeepWarm');
-    sendAlarmState('boxValue5', 'PitTempLow');
     sendAlarmState('boxValue6', 'DoneAlarm');
-    sendAlarmState('boxValue7', 'LidDetection');
     
     // Update button states based on checkbox states
     updateAlarmButtonStates();
@@ -976,16 +967,6 @@ function updateAlarmButtonStates() {
         box9Button.disabled = !keepWarmCheckbox.checked;
         box9Button.style.opacity = keepWarmCheckbox.checked ? '1' : '0.5';
         box9Button.style.cursor = keepWarmCheckbox.checked ? 'pointer' : 'not-allowed';
-    }
-    
-    // Pit Temp Low checkbox (boxValue5) controls Duration SET button (box10)
-    const pitTempLowCheckbox = document.getElementById('boxValue5');
-    const box10Button = document.querySelector('button[onclick="updateBox(document.getElementById(\'box10\'))"]');
-    
-    if (pitTempLowCheckbox && box10Button) {
-        box10Button.disabled = !pitTempLowCheckbox.checked;
-        box10Button.style.opacity = pitTempLowCheckbox.checked ? '1' : '0.5';
-        box10Button.style.cursor = pitTempLowCheckbox.checked ? 'pointer' : 'not-allowed';
     }
 }
 

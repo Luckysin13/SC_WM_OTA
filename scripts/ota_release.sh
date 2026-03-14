@@ -63,20 +63,30 @@ manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 manifest["version"] = version
 manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="ascii")
 
-pattern = re.compile(r"/sw\.js\?v=[^'\"]+")
+sw_pattern = re.compile(r"/sw\.js\?v=[^'\"]+")
+scriptwifi_pattern = re.compile(r"scriptwifi\.js\?v=[^'\"]+")
 for relative_path in [
     "data/index.html",
-    "data/wifi.html",
     "data/alarms.html",
     "data/graph.html",
     "data/configuration.html",
 ]:
     path = root / relative_path
     content = path.read_text(encoding="utf-8")
-    updated = pattern.sub(f"/sw.js?v={version}", content)
-    if updated == content:
+    if not sw_pattern.search(content):
         raise SystemExit(f"Failed to update service worker version token in {relative_path}")
+    updated = sw_pattern.sub(f"/sw.js?v={version}", content)
     path.write_text(updated, encoding="utf-8")
+
+wifi_path = root / "data" / "wifi.html"
+wifi_content = wifi_path.read_text(encoding="utf-8")
+if not sw_pattern.search(wifi_content):
+    raise SystemExit("Failed to update service worker version token in data/wifi.html")
+if not scriptwifi_pattern.search(wifi_content):
+    raise SystemExit("Failed to update scriptwifi version token in data/wifi.html")
+wifi_updated = sw_pattern.sub(f"/sw.js?v={version}", wifi_content)
+wifi_updated = scriptwifi_pattern.sub(f"scriptwifi.js?v={version}", wifi_updated)
+wifi_path.write_text(wifi_updated, encoding="utf-8")
 PY
 }
 
@@ -100,22 +110,45 @@ if manifest.get("version") != expected:
     )
     raise SystemExit(1)
 
-pattern = re.compile(r"/sw\.js\?v=([^'\"]+)")
+sw_pattern = re.compile(r"/sw\.js\?v=([^'\"]+)")
 for relative_path in [
     "data/index.html",
-    "data/wifi.html",
     "data/alarms.html",
     "data/graph.html",
     "data/configuration.html",
 ]:
     content = (root / relative_path).read_text(encoding="utf-8")
-    match = pattern.search(content)
+    match = sw_pattern.search(content)
     if not match:
         print(f"Missing service worker version token in {relative_path}", file=sys.stderr)
         raise SystemExit(1)
     if match.group(1) != expected:
         print(
             f"Service worker version mismatch in {relative_path}: expected {expected}, found {match.group(1)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+wifi_content = (root / "data" / "wifi.html").read_text(encoding="utf-8")
+wifi_sw_match = sw_pattern.search(wifi_content)
+if not wifi_sw_match:
+        print("Missing service worker version token in data/wifi.html", file=sys.stderr)
+        raise SystemExit(1)
+if wifi_sw_match.group(1) != expected:
+        print(
+            f"Service worker version mismatch in data/wifi.html: expected {expected}, found {wifi_sw_match.group(1)}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+scriptwifi_pattern = re.compile(r"scriptwifi\.js\?v=([^'\"]+)")
+scriptwifi_match = scriptwifi_pattern.search(wifi_content)
+if not scriptwifi_match:
+        print("Missing scriptwifi version token in data/wifi.html", file=sys.stderr)
+        raise SystemExit(1)
+if scriptwifi_match.group(1) != expected:
+        print(
+            f"scriptwifi version mismatch in data/wifi.html: expected {expected}, found {scriptwifi_match.group(1)}",
             file=sys.stderr,
         )
         raise SystemExit(1)
@@ -259,11 +292,13 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+)*$ ]]; then
 fi
 if [[ -n "$LATEST_VERSION" ]]; then
   if [[ "$VERSION" == "$LATEST_VERSION" ]]; then
-    echo "VERSION must be newer than latest ($LATEST_VERSION)."
-    exit 1
+    if [[ "$CHECK_ONLY" -ne 1 ]]; then
+      echo "VERSION must be newer than latest ($LATEST_VERSION)."
+      exit 1
+    fi
   fi
   HIGHEST="$(printf "%s\n%s\n" "$LATEST_VERSION" "$VERSION" | sort -V | tail -n1)"
-  if [[ "$HIGHEST" != "$VERSION" ]]; then
+  if [[ "$VERSION" != "$LATEST_VERSION" && "$HIGHEST" != "$VERSION" ]]; then
     echo "VERSION '$VERSION' is lower than latest '$LATEST_VERSION'."
     exit 1
   fi
@@ -327,7 +362,6 @@ fi
 mkdir -p "$OTA_REPO_DIR/releases/v$VERSION" "$OTA_REPO_DIR/releases/latest"
 rm -f "$OTA_REPO_DIR/releases/v$VERSION/firmware.bin" \
   "$OTA_REPO_DIR/releases/v$VERSION/littlefs.bin" \
-  "$OTA_REPO_DIR/releases/v$VERSION/spiffs.bin" \
   "$OTA_REPO_DIR/releases/v$VERSION/manifest.json"
 cp .pio/build/esp32dev/firmware.bin "$OTA_REPO_DIR/releases/v$VERSION/firmware.bin"
 cp .pio/build/esp32dev/littlefs.bin "$OTA_REPO_DIR/releases/v$VERSION/littlefs.bin"
@@ -336,7 +370,6 @@ cp "$tmp_manifest" "$OTA_REPO_DIR/releases/v$VERSION/manifest.json"
 cp "$OTA_REPO_DIR/releases/v$VERSION/firmware.bin" "$OTA_REPO_DIR/releases/latest/firmware.bin"
 cp "$OTA_REPO_DIR/releases/v$VERSION/littlefs.bin" "$OTA_REPO_DIR/releases/latest/littlefs.bin"
 cp "$OTA_REPO_DIR/releases/v$VERSION/manifest.json" "$OTA_REPO_DIR/releases/latest/manifest.json"
-rm -f "$OTA_REPO_DIR/releases/latest/spiffs.bin"
 
 RESTORE_PROJECT_VERSION=0
 RESTORE_PWA_FILES=0

@@ -480,21 +480,6 @@ void WebSocketHandler::handleMessage(const String &message, int clientFd) {
     return;
   }
 
-  if (message.startsWith("PitTempLow")) {
-    if (!isBooleanString(message.substring(10))) {
-      Serial.println("[WebSocket] Rejected invalid PitTempLow state");
-      return;
-    }
-    String value = message.substring(10);
-    stateCoord.withDisplay([&](DisplayState &display) {
-      display.pitTempLowAlarm = value;
-    });
-    Serial.printf("[WebSocket] PitTempLow alarm: %s\n",
-                  value.c_str());
-    updateClients();
-    return;
-  }
-
   if (message.startsWith("DoneAlarm")) {
     if (!isBooleanString(message.substring(9))) {
       Serial.println("[WebSocket] Rejected invalid DoneAlarm state");
@@ -509,28 +494,6 @@ void WebSocketHandler::handleMessage(const String &message, int clientFd) {
     });
     Serial.printf("[WebSocket] DoneAlarm: %s (enabled: %d)\n",
                   value.c_str(), keepWarmEnabled);
-    updateClients();
-    return;
-  }
-
-  if (message.startsWith("LidDetection")) {
-    String state = message.substring(12);
-    if (!isBooleanString(state)) {
-      Serial.println("[WebSocket] Rejected invalid LidDetection state");
-      return;
-    }
-    stateCoord.withState([&](SensorData &, ControllerState &ctrl,
-                             DisplayState &display, HistoryManager &) {
-      display.lidDetectionAlarm = state;
-      ctrl.lidDetectionEnabled = (state == "true");
-
-      if (!ctrl.lidDetectionEnabled) {
-        ctrl.lidOpen = false;
-        display.lidOpen = false;
-      }
-    });
-
-    Serial.printf("[WebSocket] LidDetection: %s\n", state.c_str());
     updateClients();
     return;
   }

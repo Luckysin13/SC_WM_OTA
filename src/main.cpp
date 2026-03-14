@@ -32,7 +32,6 @@
 // Control modules
 #include "control/controller_state.h"
 #include "control/display_state.h"
-#include "control/lid_open_detector.h"
 #include "control/pid_autotuner.h"
 #include "control/sensor_data.h"
 #include "control/state_coordinator.h"
@@ -58,7 +57,6 @@
 Temperature tempSensor;
 FanActuator fanActuator;
 TemperatureController pidController;
-LidOpenDetector lidDetector;
 PIDAutotuner autotuner;
 StateCoordinator stateCoord;
 
@@ -625,18 +623,7 @@ void loop() {
   double pidOutput = 0;
   stateCoord.withState([&](SensorData &, ControllerState &ctrlState,
                            DisplayState &display, HistoryManager &) {
-    ctrlState.lidOpen = lidDetector.update(sensorData.pitTemp, ctrlState.setpoint);
-
-    if (ctrlState.lidOpen) {
-      ctrlState.lastInput = sensorData.pitTemp;
-      pidOutput = 0;
-
-      if (ctrlState.autotuneActive) {
-        ctrlState.autotuneActive = false;
-        autotuner.stop();
-        Serial.println("[Autotune] Cancelled: Lid opened.");
-      }
-    } else if (ctrlState.autotuneActive) {
+    if (ctrlState.autotuneActive) {
       pidOutput = autotuner.update(sensorData.pitTemp);
       ctrlState.pidOutput = pidOutput;
 
@@ -712,7 +699,6 @@ void loop() {
       display.meatSetpoint = String((int)ctrlState.meatSetpoint);
       display.keepWarmSetpoint = String((int)ctrlState.keepWarmSetpoint);
       display.updateFanSpeed(ctrlState.fanPercent);
-      display.lidOpen = ctrlState.lidOpen;
       display.autotuneActive = ctrlState.autotuneActive;
       display.autotuneState = (int)autotuner.getState();
       display.fanAuto = ctrlState.fanAuto;

@@ -81,9 +81,7 @@ struct DisplayState {
 
   // Alarm states (not fully implemented yet, prepared for Phase 5)
   String keepWarmAlarm = "false";    // boxValue4
-  String pitTempLowAlarm = "false";  // boxValue5
   String doneAlarm = "false";        // boxValue6
-  String lidDetectionAlarm = "false"; // boxValue7
 
   // Last values for change detection
   String lastMeatTemp = "0";
@@ -97,7 +95,6 @@ struct DisplayState {
   String lastMeatSetpoint = "0";
   String lastKeepWarmSetpoint = "0";
   bool lastIsAP = false;
-  bool lastLidOpen = false;
   bool lastAutotuneActive = false;
   String lastWifiSsid = "";
   String lastWifiRssi = "";
@@ -107,7 +104,6 @@ struct DisplayState {
 
   // Flags
   bool isAP = false;
-  bool lidOpen = false;
   bool autotuneActive = false;
   int autotuneState = 0; // 0: Idle, 1: Tuning, 2: Complete, 3: Failed
   bool fanAuto = true;
@@ -124,7 +120,7 @@ struct DisplayState {
            (timezone != lastTimezone) || (isAP != lastIsAP) ||
            (meatSetpoint != lastMeatSetpoint) ||
            (keepWarmSetpoint != lastKeepWarmSetpoint) ||
-           (lidOpen != lastLidOpen) || (autotuneActive != lastAutotuneActive) ||
+          (autotuneActive != lastAutotuneActive) ||
            (wifiSsid != lastWifiSsid) || (wifiRssi != lastWifiRssi) ||
            (wifiIp != lastWifiIp) || (wifiConnected != lastWifiConnected) ||
            (fanAuto != lastFanAuto);
@@ -143,7 +139,6 @@ struct DisplayState {
     lastIsAP = isAP;
     lastMeatSetpoint = meatSetpoint;
     lastKeepWarmSetpoint = keepWarmSetpoint;
-    lastLidOpen = lidOpen;
     lastAutotuneActive = autotuneActive;
     lastWifiSsid = wifiSsid;
     lastWifiRssi = wifiRssi;
@@ -166,7 +161,6 @@ struct DisplayState {
     json += "\"kd\":\"" + escapeJson(kd) + "\",";
     json += "\"timezone\":\"" + escapeJson(timezone) + "\",";
     json += "\"isAP\":" + String(isAP ? "true" : "false") + ",";
-    json += "\"lid\":" + String(lidOpen ? "true" : "false") + ",";
     json += "\"atActive\":" + String(autotuneActive ? "true" : "false") + ",";
     json += "\"atState\":" + String(autotuneState) + ",";
     json += "\"fanAuto\":" + String(fanAuto ? "true" : "false") + ",";
@@ -176,9 +170,7 @@ struct DisplayState {
     json += "\"o\":" + String((int)timeSync.getUTCOffset()) + ",";
 
     json += "\"boxValue4\":\"" + escapeJson(keepWarmAlarm) + "\",";
-    json += "\"boxValue5\":\"" + escapeJson(pitTempLowAlarm) + "\",";
     json += "\"boxValue6\":\"" + escapeJson(doneAlarm) + "\",";
-    json += "\"boxValue7\":\"" + escapeJson(lidDetectionAlarm) + "\",";
     json += "\"boxValue8\":\"" + escapeJson(meatSetpoint) + "\",";
     json += "\"boxValue9\":\"" + escapeJson(keepWarmSetpoint) + "\",";
 

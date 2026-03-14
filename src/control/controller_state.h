@@ -18,9 +18,7 @@ struct ControllerState {
   double integral = 0;  // Integral accumulator
   double lastInput = 0; // Last input for derivative calculation
 
-  bool lidOpen = false;            // Track if lid is open
-  bool lidDetectionEnabled = true; // Whether to run lid detection logic
-  bool autotuneActive = false;     // Is autotuning in progress?
+  bool autotuneActive = false; // Is autotuning in progress?
 
   double meatSetpoint = 195.0;     // Target meat temperature (°F)
   double keepWarmSetpoint = 160.0; // Target pit temperature during Keep Warm
@@ -34,7 +32,6 @@ struct ControllerState {
     lastInput = 0;
     pidOutput = 0;
     fanPercent = 0;
-    lidOpen = false;
     autotuneActive = false;
   }
 };

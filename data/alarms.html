@@ -93,56 +93,13 @@
                 </div>
             </section>
 
-            <section class="box alarm-card">
-                <div class="alarm-header">
-                    <div>
-                        <div class="alarm-title">Pit Temp Low</div>
-                        <div class="alarm-subtitle">Notify if the pit stays below setpoint.</div>
-                    </div>
-                    <label class="alarm-toggle" for="boxValue5">
-                        <span>Enabled</span>
-                        <input class="boxchecksize" type="checkbox" id="boxValue5" name="PitTempLow" value="yes"
-                            onclick="updateCheckbox()">
-                    </label>
-                </div>
-                <div class="alarm-body">
-                    <div class="alarm-row">
-                        <label class="alarm-label" for="box10">Duration (mins)</label>
-                        <div class="alarm-input-group">
-                            <input type="text" id="box10" class="setpoint-input alarm-input" min="1" max="999" step="1"
-                                value="" maxlength="3" size="5" inputmode="numeric" pattern="[0-9]*" onfocus="this.value=''"
-                                onkeydown="if(event.key==='Enter') { this.blur(); updateBox(this); }" />
-                            <button class="save-btn alarm-btn" onclick="updateBox(document.getElementById('box10'))">Set</button>
-                        </div>
-                        <div class="alarm-hint">Time the pit must stay low before the alarm triggers.</div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="box alarm-card">
-                <div class="alarm-header">
-                    <div>
-                        <div class="alarm-title">Open Lid Detection</div>
-                        <div class="alarm-subtitle">Detect sudden drops caused by opening the lid.</div>
-                    </div>
-                    <label class="alarm-toggle" for="boxValue7">
-                        <span>Enabled</span>
-                        <input class="boxchecksize" type="checkbox" id="boxValue7" name="LidDetection" value="yes"
-                            onclick="updateCheckbox()">
-                    </label>
-                </div>
-                <div class="alarm-body">
-                    <div class="alarm-hint">Pauses alarms during normal lid-open events.</div>
-                </div>
-            </section>
-
         </div>
     </main>
     <script src="script.js" defer></script>
     <script>
         if ('serviceWorker' in navigator && location.protocol === 'http:') {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js?v=3.0.3')
+                navigator.serviceWorker.register('/sw.js?v=3.0.4')
                     .then(reg => console.log('[PWA] Service Worker registered'))
                     .catch(err => console.log('[PWA] SW registration failed:', err));
             });
