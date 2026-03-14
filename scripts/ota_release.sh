@@ -37,6 +37,69 @@ canonical_dir() {
   )
 }
 
+git_path_exists() {
+  local repo_dir="$1"
+  local git_path="$2"
+  [[ -e "$(git -C "$repo_dir" rev-parse --git-path "$git_path")" ]]
+}
+
+require_repo_ready_for_release() {
+  local repo_dir="$1"
+  local repo_label="$2"
+
+  if ! git -C "$repo_dir" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "Invalid $repo_label git repository: $repo_dir"
+    exit 1
+  fi
+
+  if git_path_exists "$repo_dir" rebase-apply || \
+     git_path_exists "$repo_dir" rebase-merge || \
+     git_path_exists "$repo_dir" MERGE_HEAD || \
+     git_path_exists "$repo_dir" CHERRY_PICK_HEAD || \
+     git_path_exists "$repo_dir" REVERT_HEAD || \
+     [[ -n "$(git -C "$repo_dir" diff --name-only --diff-filter=U)" ]]; then
+    echo "Release blocked: $repo_label has unresolved merge/rebase state. Resolve it before running OTA Release."
+    exit 1
+  fi
+}
+
+require_repo_syncable_with_origin() {
+  local repo_dir="$1"
+  local repo_label="$2"
+  local local_head
+  local remote_head
+  local merge_base
+
+  if ! git -C "$repo_dir" remote get-url origin >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! git -C "$repo_dir" fetch origin main --quiet; then
+    echo "Release blocked: failed to fetch origin/main for $repo_label."
+    exit 1
+  fi
+
+  if ! git -C "$repo_dir" rev-parse --verify origin/main >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local_head="$(git -C "$repo_dir" rev-parse HEAD)"
+  remote_head="$(git -C "$repo_dir" rev-parse origin/main)"
+  merge_base="$(git -C "$repo_dir" merge-base HEAD origin/main)"
+
+  if [[ "$local_head" == "$remote_head" || "$merge_base" == "$remote_head" ]]; then
+    return 0
+  fi
+
+  if [[ "$merge_base" == "$local_head" ]]; then
+    echo "Release blocked: $repo_label is behind origin/main. Sync the repo before running OTA Release."
+    exit 1
+  fi
+
+  echo "Release blocked: $repo_label has diverged from origin/main. Reconcile the branch before running OTA Release."
+  exit 1
+}
+
 extract_project_version() {
   sed -n 's/.*PROJECT_VER[[:space:]]*"\([^"]*\)".*/\1/p' CMakeLists.txt | head -n1
 }
@@ -545,6 +608,10 @@ if [[ ! -d "$OTA_REPO_DIR/.git" ]]; then
   exit 1
 fi
 
+require_repo_ready_for_release "$REPO_ROOT" "source repo"
+require_repo_ready_for_release "$OTA_REPO_DIR" "OTA repo"
+require_repo_syncable_with_origin "$OTA_REPO_DIR" "OTA repo"
+
 ORIGINAL_PROJECT_VERSION="$(extract_project_version)"
 RESTORE_PROJECT_VERSION=1
 tmp_manifest=""
@@ -705,8 +772,7 @@ RESTORE_RELEASE_DOCS=0
 
 cd "$OTA_REPO_DIR"
 commit_repo_changes "$PWD" "Release v$VERSION (docs + signed firmware + LittleFS)"
-git pull --rebase --autostash origin main
-git push origin main
+git push origin HEAD:main
 
 if [[ "$(canonical_dir "$PWD")" != "$REPO_ROOT" ]]; then
   commit_repo_changes "$REPO_ROOT" "Prepare release v$VERSION source update"

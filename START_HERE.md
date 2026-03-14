@@ -4,8 +4,8 @@ Use this file as the quick maintainer entry point for the current OTA repository
 
 ## Current State
 
-- Firmware source version: `3.0.5`
-- Current OTA release: `releases/v3.0.5/`
+- Firmware source version: `3.0.6`
+- Current OTA release: `releases/v3.0.6/`
 - Latest OTA pointer: `releases/latest/`
 - OTA updater is already implemented in firmware.
 - Filesystem packaging uses LittleFS, not SPIFFS.
