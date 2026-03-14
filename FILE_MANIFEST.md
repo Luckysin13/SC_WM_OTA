@@ -100,7 +100,7 @@ Current OTA pointer used by deployed devices:
 - `littlefs.bin`
 - `manifest.json`
 
-### `releases/v3.0.4/`
+### `releases/vX.Y.Z/`
 
 Current versioned release snapshot:
 
@@ -116,7 +116,7 @@ Historical releases retained for archive and rollback reference.
 
 ### `scripts/ota_release.sh`
 
-Automates version synchronization, PWA version token updates, artifact generation, and manifest creation for a release.
+Automates version synchronization, current release document updates, artifact generation, manifest creation, and publish-repo staging for a release.
 
 ### `scripts/sign_firmware.py`
 

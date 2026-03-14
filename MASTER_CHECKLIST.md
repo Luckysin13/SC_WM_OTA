@@ -12,7 +12,16 @@ Use this checklist when preparing and publishing a new OTA release from this rep
 - [ ] `data/graph.html`
 - [ ] `data/alarms.html`
 - [ ] `data/wifi.html`
-- [ ] Update any other release-facing docs that reference the current version.
+
+## Documentation
+
+- [ ] Update `README.md` current release section before publishing artifacts.
+- [ ] Update `START_HERE.md` current maintainer state before publishing artifacts.
+- [ ] Update `SETUP_INSTRUCTIONS.md` if GitHub publishing guidance changed.
+- [ ] Update `IMPLEMENTATION_GUIDE.md` if release mechanics or manifest expectations changed.
+- [ ] Update `COMPLETION_SUMMARY.md` with the current release facts before publishing artifacts.
+- [ ] Update `FILE_MANIFEST.md` if the published repository layout changed.
+- [ ] Confirm the release docs are ready to push together with the OTA artifacts.
 
 ## Build
 
@@ -37,19 +46,11 @@ Use this checklist when preparing and publishing a new OTA release from this rep
 - [ ] Verify version comparison behaves as expected.
 - [ ] If hardware is available, perform a real OTA update test.
 
-## Documentation
-
-- [ ] Update `README.md` current release section.
-- [ ] Update `START_HERE.md` if maintainer workflow changed.
-- [ ] Update `SETUP_INSTRUCTIONS.md` if GitHub publishing changed.
-- [ ] Update `IMPLEMENTATION_GUIDE.md` if manifest schema or OTA flow changed.
-- [ ] Update `COMPLETION_SUMMARY.md` with current release facts.
-- [ ] Update `FILE_MANIFEST.md` if file layout changed.
-
 ## GitHub
 
-- [ ] Commit the source, docs, and release artifacts.
+- [ ] Commit the source, docs, and release artifacts together.
 - [ ] Push `main` to GitHub.
+- [ ] Confirm the pushed GitHub repo contains the refreshed top-level docs as well as the new OTA artifacts.
 - [ ] Verify raw GitHub URLs for the latest manifest and binaries.
 - [ ] Leave historical release folders unchanged unless intentionally rewriting history.
 

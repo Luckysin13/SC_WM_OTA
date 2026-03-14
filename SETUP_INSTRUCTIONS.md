@@ -43,8 +43,11 @@ After push, verify these URLs:
 ### Scripted path
 
 ```bash
-scripts/ota_release.sh --version 3.0.4
+scripts/ota_release.sh --version X.Y.Z
 ```
+
+The release helper is expected to update and validate the release-facing docs before it copies OTA artifacts or pushes GitHub state.
+On a successful scripted release, it stages and commits the release changes automatically with a generated commit message.
 
 ### Manual path
 
@@ -56,11 +59,12 @@ scripts/ota_release.sh --version 3.0.4
    - `data/graph.html`
    - `data/alarms.html`
    - `data/wifi.html`
-4. Run `pio run`.
-5. Run `pio run -t buildfs`.
-6. Copy the artifacts into `releases/latest/` and `releases/vX.Y.Z/`.
-7. Update both manifest files with exact sizes and SHA-256 hashes.
-8. Commit and push.
+4. Update the release-facing docs before publishing artifacts.
+5. Run `pio run`.
+6. Run `pio run -t buildfs`.
+7. Copy the artifacts into `releases/latest/` and `releases/vX.Y.Z/`.
+8. Update both manifest files with exact sizes and SHA-256 hashes.
+9. Commit and push the docs and artifacts together.
 
 ## Validation
 
@@ -70,6 +74,7 @@ Before pushing, confirm:
 - `pio run -t buildfs` passes.
 - `releases/latest/manifest.json` points to the current version.
 - `releases/vX.Y.Z/manifest.json` points to the same artifacts as the versioned folder.
+- The refreshed top-level docs are present in the same repo state as the new OTA release.
 - The repository contains the current firmware and LittleFS binaries.
 
 ## Notes

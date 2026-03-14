@@ -47,7 +47,7 @@ git remote -v
 echo ""
 
 # Push to GitHub
-echo "Pushing to GitHub..."
+echo "Pushing docs and OTA release state to GitHub..."
 git push -u origin main
 
 if [ $? -eq 0 ]; then

@@ -4,9 +4,9 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 
 ## Current Release
 
-- Current source version: `3.0.4`
+- Current source version: `3.0.5`
 - Latest OTA manifest: `releases/latest/manifest.json`
-- Current versioned OTA release: `releases/v3.0.4/`
+- Current versioned OTA release: `releases/v3.0.5/`
 - Filesystem format: LittleFS
 
 ### Release Artifacts
@@ -98,25 +98,29 @@ The OTA updater verifies file size and SHA-256 values from the manifest before m
 
 ### Recommended
 
-Use the helper script when publishing a new version to the OTA repository path configured in `scripts/ota_release.sh`:
+Update the release-facing docs first, then use the helper script to validate the docs, build the artifacts, and publish the full GitHub repo state:
 
 ```bash
-scripts/ota_release.sh --version 3.0.4
+scripts/ota_release.sh --version X.Y.Z
 ```
+
+The helper updates current release docs, verifies they are aligned, and refuses to copy OTA artifacts into `releases/latest/` or push GitHub state until the docs are ready.
+On a successful scripted release, it also stages and commits the release changes automatically with a generated commit message.
 
 ### Manual
 
 1. Bump the firmware version in `CMakeLists.txt`.
 2. Bump the PWA version in `data/manifest.json`.
 3. Update the service worker version tokens in the HTML pages under `data/`.
-4. Build firmware with `pio run`.
-5. Build LittleFS with `pio run -t buildfs`.
-6. Copy the resulting `firmware.bin` and `littlefs.bin` into both:
+4. Update the release-facing docs so the repo describes the new release before publishing it.
+5. Build firmware with `pio run`.
+6. Build LittleFS with `pio run -t buildfs`.
+7. Copy the resulting `firmware.bin` and `littlefs.bin` into both:
    - `releases/latest/`
    - `releases/vX.Y.Z/`
-7. Update both manifests with the correct version, sizes, and SHA-256 hashes.
-8. Verify OTA update checks against `releases/latest/manifest.json`.
-9. Commit and push the updated release artifacts and docs.
+8. Update both manifests with the correct version, sizes, and SHA-256 hashes.
+9. Verify OTA update checks against `releases/latest/manifest.json`.
+10. Commit and push the updated docs and release artifacts together.
 
 ## GitHub Publishing
 
@@ -136,13 +140,16 @@ Raw OTA URLs:
 - `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/firmware.bin`
 - `https://raw.githubusercontent.com/Luckysin13/SC_WM_OTA/main/releases/latest/littlefs.bin`
 
+When publishing a release, the GitHub repo should receive the refreshed top-level docs in the same push as the updated `releases/latest/` and `releases/vX.Y.Z/` artifacts.
+
 ## Verification Checklist
 
 - `pio run` completes successfully.
 - `pio run -t buildfs` completes successfully.
 - `releases/latest/manifest.json` matches the current artifact hashes.
-- `releases/v3.0.4/manifest.json` matches the current artifact hashes.
+- `releases/vX.Y.Z/manifest.json` matches the current artifact hashes.
 - `data/manifest.json` matches the current web version.
+- The refreshed top-level release docs are included in the same commit as the OTA artifact update.
 - Devices can still fetch and parse `releases/latest/manifest.json`.
 
 ## Historical Releases

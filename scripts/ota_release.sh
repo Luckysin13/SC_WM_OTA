@@ -11,10 +11,30 @@ AUTO_CONFIRM=0
 VERSION="${VERSION:-}"
 SECURE_VERSION="${SECURE_VERSION:-0}"
 RESTORE_PWA_FILES=1
+RESTORE_RELEASE_DOCS=1
 declare -a PWA_BACKUPS=()
+declare -a RELEASE_DOC_BACKUPS=()
+REPO_ROOT="$(pwd -P)"
+TODAY="$(date +%Y-%m-%d)"
+declare -a REQUIRED_RELEASE_DOCS=(
+  README.md
+  START_HERE.md
+  SETUP_INSTRUCTIONS.md
+  IMPLEMENTATION_GUIDE.md
+  MASTER_CHECKLIST.md
+  COMPLETION_SUMMARY.md
+  FILE_MANIFEST.md
+)
 
 usage() {
   echo "Usage: $0 [--check] [--yes] [--version X.Y.Z]"
+}
+
+canonical_dir() {
+  (
+    cd "$1"
+    pwd -P
+  )
 }
 
 extract_project_version() {
@@ -46,6 +66,300 @@ restore_pwa_files() {
     rm -f "$backup"
   done
   PWA_BACKUPS=()
+}
+
+backup_release_docs() {
+  local file
+  local backup
+  for file in README.md START_HERE.md IMPLEMENTATION_GUIDE.md COMPLETION_SUMMARY.md; do
+    backup="$(mktemp)"
+    cp "$file" "$backup"
+    RELEASE_DOC_BACKUPS+=("$file:$backup")
+  done
+}
+
+restore_release_docs() {
+  local entry
+  local file
+  local backup
+  for entry in "${RELEASE_DOC_BACKUPS[@]}"; do
+    file="${entry%%:*}"
+    backup="${entry#*:}"
+    cp "$backup" "$file"
+    rm -f "$backup"
+  done
+  RELEASE_DOC_BACKUPS=()
+}
+
+require_release_docs_present() {
+  local file
+  for file in "${REQUIRED_RELEASE_DOCS[@]}"; do
+    if [[ ! -f "$file" ]]; then
+      echo "Missing required release document: $file"
+      exit 1
+    fi
+  done
+}
+
+sync_release_docs() {
+  RELEASE_VERSION="$1" \
+  PREVIOUS_VERSION="$2" \
+  RELEASE_DATE="$3" \
+  FIRMWARE_SIZE="$4" \
+  LITTLEFS_SIZE="$5" \
+  FIRMWARE_SHA256="$6" \
+  LITTLEFS_SHA256="$7" \
+  "$PYTHON_BIN" <<'PY'
+import os
+import pathlib
+import re
+
+root = pathlib.Path(".")
+version = os.environ["RELEASE_VERSION"]
+previous_version = os.environ["PREVIOUS_VERSION"]
+release_date = os.environ["RELEASE_DATE"]
+firmware_size = os.environ["FIRMWARE_SIZE"]
+littlefs_size = os.environ["LITTLEFS_SIZE"]
+firmware_sha = os.environ["FIRMWARE_SHA256"]
+littlefs_sha = os.environ["LITTLEFS_SHA256"]
+
+def replace_or_fail(path: pathlib.Path, pattern: str, replacement: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    updated, count = re.subn(pattern, replacement, content, count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise SystemExit(f"Failed to update {path} with pattern: {pattern}")
+    path.write_text(updated, encoding="utf-8")
+
+replace_or_fail(
+    root / "README.md",
+    r"^- Current source version: `[^`]+`$",
+    f"- Current source version: `{version}`",
+)
+replace_or_fail(
+    root / "README.md",
+    r"^- Current versioned OTA release: `releases/v[^`]+/`$",
+    f"- Current versioned OTA release: `releases/v{version}/`",
+)
+replace_or_fail(
+    root / "README.md",
+    r"^Last updated: .*?$",
+    f"Last updated: {release_date}",
+)
+
+replace_or_fail(
+    root / "START_HERE.md",
+    r"^- Firmware source version: `[^`]+`$",
+    f"- Firmware source version: `{version}`",
+)
+replace_or_fail(
+    root / "START_HERE.md",
+    r"^- Current OTA release: `releases/v[^`]+/`$",
+    f"- Current OTA release: `releases/v{version}/`",
+)
+replace_or_fail(
+    root / "START_HERE.md",
+    r"^Last updated: .*?$",
+    f"Last updated: {release_date}",
+)
+
+replace_or_fail(
+    root / "IMPLEMENTATION_GUIDE.md",
+    r"^- Current published version in this repository: `[^`]+`$",
+    f"- Current published version in this repository: `{version}`",
+)
+replace_or_fail(
+    root / "IMPLEMENTATION_GUIDE.md",
+    r"^Last updated: .*?$",
+    f"Last updated: {release_date}",
+)
+
+summary_path = root / "COMPLETION_SUMMARY.md"
+replace_or_fail(
+    summary_path,
+    r"^The repository is aligned to the current `[^`]+` firmware and OTA release state\.$",
+    f"The repository is aligned to the current `{version}` firmware and OTA release state.",
+)
+replace_or_fail(
+    summary_path,
+    r"^- Firmware version aligned to `[^`]+`\.$",
+    f"- Firmware version aligned to `{version}`.",
+)
+replace_or_fail(
+    summary_path,
+    r"^- Web app version aligned to `[^`]+`\.$",
+    f"- Web app version aligned to `{version}`.",
+)
+replace_or_fail(
+    summary_path,
+    r"^- Current versioned OTA release snapshot: `releases/v[^`]+/`\.$",
+    f"- Current versioned OTA release snapshot: `releases/v{version}/`.",
+)
+replace_or_fail(
+    summary_path,
+    r"^- Firmware size: `[^`]+`$",
+    f"- Firmware size: `{firmware_size}`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- LittleFS size: `[^`]+`$",
+    f"- LittleFS size: `{littlefs_size}`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- Firmware SHA-256: `[^`]+`$",
+    f"- Firmware SHA-256: `{firmware_sha}`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- LittleFS SHA-256: `[^`]+`$",
+    f"- LittleFS SHA-256: `{littlefs_sha}`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- `releases/v[^`]+/manifest\.json`$",
+    f"- `releases/v{version}/manifest.json`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- `releases/v[^`]+/firmware\.bin`$",
+    f"- `releases/v{version}/firmware.bin`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- `releases/v[^`]+/littlefs\.bin`$",
+    f"- `releases/v{version}/littlefs.bin`",
+)
+replace_or_fail(
+    summary_path,
+    r"^- `pio run` completed successfully on `[^`]+`\.$",
+    f"- `pio run` completed successfully on `{version}`.",
+)
+replace_or_fail(
+    summary_path,
+    r"^- `pio run -t buildfs` completed successfully on `[^`]+`\.$",
+    f"- `pio run -t buildfs` completed successfully on `{version}`.",
+)
+replace_or_fail(
+    summary_path,
+    r"^Last updated: .*?$",
+    f"Last updated: {release_date}",
+)
+PY
+}
+
+verify_release_docs() {
+  EXPECTED_VERSION="$1" \
+  EXPECTED_FIRMWARE_SIZE="$2" \
+  EXPECTED_LITTLEFS_SIZE="$3" \
+  EXPECTED_FIRMWARE_SHA256="$4" \
+  EXPECTED_LITTLEFS_SHA256="$5" \
+  "$PYTHON_BIN" <<'PY'
+import os
+import pathlib
+import re
+import sys
+
+root = pathlib.Path(".")
+version = os.environ["EXPECTED_VERSION"]
+firmware_size = os.environ["EXPECTED_FIRMWARE_SIZE"]
+littlefs_size = os.environ["EXPECTED_LITTLEFS_SIZE"]
+firmware_sha = os.environ["EXPECTED_FIRMWARE_SHA256"]
+littlefs_sha = os.environ["EXPECTED_LITTLEFS_SHA256"]
+
+required_files = [
+    "README.md",
+    "START_HERE.md",
+    "SETUP_INSTRUCTIONS.md",
+    "IMPLEMENTATION_GUIDE.md",
+    "MASTER_CHECKLIST.md",
+    "COMPLETION_SUMMARY.md",
+    "FILE_MANIFEST.md",
+]
+for relative in required_files:
+    if not (root / relative).is_file():
+        print(f"Missing required release document: {relative}", file=sys.stderr)
+        raise SystemExit(1)
+
+checks = {
+    "README.md": [
+        rf"^- Current source version: `{re.escape(version)}`$",
+        rf"^- Current versioned OTA release: `releases/v{re.escape(version)}/`$",
+    ],
+    "START_HERE.md": [
+        rf"^- Firmware source version: `{re.escape(version)}`$",
+        rf"^- Current OTA release: `releases/v{re.escape(version)}/`$",
+    ],
+    "IMPLEMENTATION_GUIDE.md": [
+        rf"^- Current published version in this repository: `{re.escape(version)}`$",
+    ],
+    "COMPLETION_SUMMARY.md": [
+        rf"^The repository is aligned to the current `{re.escape(version)}` firmware and OTA release state\.$",
+        rf"^- Firmware version aligned to `{re.escape(version)}`\.$",
+        rf"^- Web app version aligned to `{re.escape(version)}`\.$",
+        rf"^- Current versioned OTA release snapshot: `releases/v{re.escape(version)}/`\.$",
+        rf"^- Firmware size: `{re.escape(firmware_size)}`$",
+        rf"^- LittleFS size: `{re.escape(littlefs_size)}`$",
+        rf"^- Firmware SHA-256: `{re.escape(firmware_sha)}`$",
+        rf"^- LittleFS SHA-256: `{re.escape(littlefs_sha)}`$",
+    ],
+}
+
+for relative, patterns in checks.items():
+    content = (root / relative).read_text(encoding="utf-8")
+    for pattern in patterns:
+        if not re.search(pattern, content, flags=re.MULTILINE):
+            print(f"Release document validation failed for {relative}: missing pattern {pattern}", file=sys.stderr)
+            raise SystemExit(1)
+PY
+}
+
+sync_publish_repo_docs() {
+  local target_dir="$1"
+  local target_root
+  local file
+  target_root="$(canonical_dir "$target_dir")"
+  if [[ "$target_root" == "$REPO_ROOT" ]]; then
+    return 0
+  fi
+
+  for file in "${REQUIRED_RELEASE_DOCS[@]}"; do
+    cp "$file" "$target_root/$file"
+  done
+  cp setup_github.sh "$target_root/setup_github.sh"
+  chmod 755 "$target_root/setup_github.sh"
+}
+
+verify_publish_repo_docs() {
+  local target_dir="$1"
+  local target_root
+  local file
+  target_root="$(canonical_dir "$target_dir")"
+  if [[ "$target_root" == "$REPO_ROOT" ]]; then
+    return 0
+  fi
+
+  for file in "${REQUIRED_RELEASE_DOCS[@]}"; do
+    if ! cmp -s "$file" "$target_root/$file"; then
+      echo "Publish repo documentation mismatch: $file"
+      exit 1
+    fi
+  done
+}
+
+commit_repo_changes() {
+  local repo_dir="$1"
+  local commit_message="$2"
+
+  if [[ ! -d "$repo_dir/.git" ]]; then
+    echo "Cannot commit changes: $repo_dir is not a git repository"
+    exit 1
+  fi
+
+  (
+    cd "$repo_dir"
+    git add -A
+    git diff --cached --quiet || git commit -m "$commit_message"
+  )
 }
 
 sync_pwa_version_files() {
@@ -236,6 +550,7 @@ RESTORE_PROJECT_VERSION=1
 tmp_manifest=""
 
 backup_pwa_files
+backup_release_docs
 
 cleanup() {
   if [[ -n "$tmp_manifest" && -f "$tmp_manifest" ]]; then
@@ -246,6 +561,9 @@ cleanup() {
   fi
   if [[ "$RESTORE_PWA_FILES" -eq 1 && "${#PWA_BACKUPS[@]}" -gt 0 ]]; then
     restore_pwa_files
+  fi
+  if [[ "$RESTORE_RELEASE_DOCS" -eq 1 && "${#RELEASE_DOC_BACKUPS[@]}" -gt 0 ]]; then
+    restore_release_docs
   fi
 }
 
@@ -304,6 +622,8 @@ if [[ -n "$LATEST_VERSION" ]]; then
   fi
 fi
 
+require_release_docs_present
+
 if [[ "$AUTO_CONFIRM" -ne 1 ]]; then
   read -r -p "Proceed with release v$VERSION? [y/N]: " CONFIRM
   if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
@@ -348,6 +668,11 @@ LITTLEFS_SIZE="$(stat -c %s .pio/build/esp32dev/littlefs.bin)"
 FIRMWARE_SHA256="$(sha256sum .pio/build/esp32dev/firmware.bin | awk '{print $1}')"
 LITTLEFS_SHA256="$(sha256sum .pio/build/esp32dev/littlefs.bin | awk '{print $1}')"
 
+sync_release_docs "$VERSION" "$ORIGINAL_PROJECT_VERSION" "$TODAY" \
+  "$FIRMWARE_SIZE" "$LITTLEFS_SIZE" "$FIRMWARE_SHA256" "$LITTLEFS_SHA256"
+verify_release_docs "$VERSION" "$FIRMWARE_SIZE" "$LITTLEFS_SIZE" \
+  "$FIRMWARE_SHA256" "$LITTLEFS_SHA256"
+
 tmp_manifest="$(mktemp)"
 build_manifest "$tmp_manifest"
 "$PYTHON_BIN" -m json.tool "$tmp_manifest" >/dev/null
@@ -358,6 +683,9 @@ if [[ "$CHECK_ONLY" -eq 1 ]]; then
   echo "LittleFS size: $LITTLEFS_SIZE bytes"
   exit 0
 fi
+
+sync_publish_repo_docs "$OTA_REPO_DIR"
+verify_publish_repo_docs "$OTA_REPO_DIR"
 
 mkdir -p "$OTA_REPO_DIR/releases/v$VERSION" "$OTA_REPO_DIR/releases/latest"
 rm -f "$OTA_REPO_DIR/releases/v$VERSION/firmware.bin" \
@@ -373,11 +701,15 @@ cp "$OTA_REPO_DIR/releases/v$VERSION/manifest.json" "$OTA_REPO_DIR/releases/late
 
 RESTORE_PROJECT_VERSION=0
 RESTORE_PWA_FILES=0
+RESTORE_RELEASE_DOCS=0
 
 cd "$OTA_REPO_DIR"
-git add -A
-git diff --cached --quiet || git commit -m "Release v$VERSION (signed firmware+LittleFS)"
+commit_repo_changes "$PWD" "Release v$VERSION (docs + signed firmware + LittleFS)"
 git pull --rebase --autostash origin main
 git push origin main
+
+if [[ "$(canonical_dir "$PWD")" != "$REPO_ROOT" ]]; then
+  commit_repo_changes "$REPO_ROOT" "Prepare release v$VERSION source update"
+fi
 
 echo "Release v$VERSION completed."

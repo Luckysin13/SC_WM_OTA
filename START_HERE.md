@@ -4,8 +4,8 @@ Use this file as the quick maintainer entry point for the current OTA repository
 
 ## Current State
 
-- Firmware source version: `3.0.4`
-- Current OTA release: `releases/v3.0.4/`
+- Firmware source version: `3.0.5`
+- Current OTA release: `releases/v3.0.5/`
 - Latest OTA pointer: `releases/latest/`
 - OTA updater is already implemented in firmware.
 - Filesystem packaging uses LittleFS, not SPIFFS.
@@ -34,10 +34,10 @@ pio run -t uploadfs --upload-port /dev/ttyUSB1
 ### Publish a new OTA release
 
 ```bash
-scripts/ota_release.sh --version 3.0.4
+scripts/ota_release.sh --version X.Y.Z
 ```
 
-If you are publishing manually, update the version in source, rebuild, refresh `releases/latest/`, create `releases/vX.Y.Z/`, and update the manifest hashes.
+If you are publishing manually, update the version in source, refresh the release-facing docs first, rebuild, refresh `releases/latest/`, create `releases/vX.Y.Z/`, and update the manifest hashes before pushing GitHub state.
 
 ## Read Next
 
@@ -55,7 +55,7 @@ releases/latest/
   littlefs.bin
   manifest.json
 
-releases/v3.0.4/
+releases/vX.Y.Z/
   firmware.bin
   littlefs.bin
   manifest.json
@@ -64,7 +64,7 @@ releases/v3.0.4/
 ## Important Notes
 
 - `releases/latest/manifest.json` is what devices check first.
-- Keep `CMakeLists.txt`, `data/manifest.json`, and HTML service worker version tokens in sync.
+- Keep `CMakeLists.txt`, `data/manifest.json`, current release docs, and HTML service worker version tokens in sync.
 - Historical `releases/v*/` folders are archives and should usually remain unchanged.
 
 Last updated: 2026-03-14

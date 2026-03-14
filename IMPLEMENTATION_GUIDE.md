@@ -7,7 +7,7 @@ This document describes the current OTA implementation and release mechanics in 
 - Firmware version source: `CMakeLists.txt` via `PROJECT_VER`
 - Web app version source: `data/manifest.json`
 - OTA entry point: `releases/latest/manifest.json`
-- Current published version in this repository: `3.0.4`
+- Current published version in this repository: `3.0.5`
 
 Devices compare the version reported by `PROJECT_VER` against the version from `releases/latest/manifest.json`.
 
@@ -50,21 +50,21 @@ Current manifest schema:
 
 ```json
 {
-  "version": "3.0.4",
-  "description": "Release 3.0.4 - current OTA build with updated documentation and release metadata",
+  "version": "X.Y.Z",
+  "description": "Release X.Y.Z",
   "firmware": "firmware.bin",
   "littlefs": "littlefs.bin",
   "secure_version": 0,
   "artifacts": {
     "firmware": {
       "path": "firmware.bin",
-      "size": 1215892,
-      "sha256": "4a4935985c10a9bcfd86a0aa6390c895438568b6d6ff15ae6915162858c30c7a"
+      "size": 123456,
+      "sha256": "<firmware-sha256>"
     },
     "littlefs": {
       "path": "littlefs.bin",
-      "size": 458752,
-      "sha256": "ee770ab18adbbc8b286268884dce8831c01a868b741a3941a929e7bbce82feb8"
+      "size": 456789,
+      "sha256": "<littlefs-sha256>"
     }
   }
 }
@@ -92,7 +92,7 @@ releases/
 │   ├── firmware.bin
 │   ├── littlefs.bin
 │   └── manifest.json
-├── v3.0.4/
+├── vX.Y.Z/
 │   ├── firmware.bin
 │   ├── littlefs.bin
 │   └── manifest.json
@@ -108,22 +108,23 @@ releases/
 1. Update `CMakeLists.txt` version.
 2. Update `data/manifest.json` version.
 3. Update service worker tokens in the HTML files under `data/`.
-4. Run `pio run`.
-5. Run `pio run -t buildfs`.
-6. Copy the resulting `firmware.bin` and `littlefs.bin` to:
+4. Update the release-facing docs before publishing artifacts.
+5. Run `pio run`.
+6. Run `pio run -t buildfs`.
+7. Copy the resulting `firmware.bin` and `littlefs.bin` to:
    - `releases/latest/`
    - `releases/vX.Y.Z/`
-7. Update both manifest files with exact sizes and SHA-256 values.
-8. Push the repository to GitHub.
-9. Verify OTA check behavior from a device.
+8. Update both manifest files with exact sizes and SHA-256 values.
+9. Push the repository to GitHub with the refreshed docs and OTA artifacts in the same repo state.
+10. Verify OTA check behavior from a device.
 
 ### Scripted
 
 ```bash
-scripts/ota_release.sh --version 3.0.4
+scripts/ota_release.sh --version X.Y.Z
 ```
 
-Use the script when publishing to the dedicated OTA repository path configured by `OTA_REPO_DIR`.
+Use the script when publishing to the dedicated OTA repository path configured by `OTA_REPO_DIR`. The script should update current release docs before it copies OTA artifacts or pushes GitHub state.
 
 ## Verification
 
