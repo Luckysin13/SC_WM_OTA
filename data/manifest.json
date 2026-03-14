@@ -1,7 +1,7 @@
 {
   "name": "Smoker Controller",
   "short_name": "Smoker",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "WiFi-enabled BBQ smoker temperature controller with PID control",
   "start_url": "/",
   "scope": "/",
