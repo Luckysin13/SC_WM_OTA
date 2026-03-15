@@ -1,6 +1,6 @@
 # SC_WM OTA Firmware Repository
 
-This repository contains the current SC_WM firmware source, web assets, OTA updater implementation, and published OTA release artifacts for the ESP32-based smoker controller.
+This repository is published as a minimal OTA branch for the ESP32-based smoker controller. A real OTA release keeps only the `releases/` tree plus `.gitignore`, `CMakeLists.txt`, `LICENSE`, and `README.md` at the repo root.
 
 ## Current Release
 
@@ -22,29 +22,21 @@ This repository contains the current SC_WM firmware source, web assets, OTA upda
 
 - Refreshed OTA release metadata and repository documentation.
 - Aligned the release tree with the current firmware and LittleFS artifacts.
-- OTA dry-run and OTA release status-bar buttons now target this repository directly.
-- OTA release validation now blocks unresolved or diverged git states before publish.
+- OTA dry-run and OTA release status-bar buttons build from this source checkout and publish against `origin/main`.
+- When the source checkout and OTA publish repo are the same path, the release helper now uses a temporary `origin/main` worktree so local branch divergence does not block publishing.
 
-## Repository Layout
+## OTA Branch Layout
 
 ```text
 .
-├── data/                    Web UI files packed into LittleFS
+├── .gitignore
+├── CMakeLists.txt           Project version copied into the OTA publish branch
+├── LICENSE
+├── README.md
 ├── releases/
 │   ├── latest/              OTA pointers used by devices in the field
 │   ├── v1.0.0/ ...          Historical releases
 │   └── v3.0.7/              Current versioned release
-├── scripts/
-│   ├── ota_release.sh       Release helper for publishing OTA artifacts
-│   ├── sign_firmware.py     Post-build signing helper
-│   └── ensure_signature_s.py
-├── src/
-│   ├── control/             PID, state, history, temperature logic
-│   ├── network/             WiFi, WebSocket, OTA updater
-│   └── ...
-├── CMakeLists.txt           Project version source of truth for firmware
-├── platformio.ini           PlatformIO environment and filesystem config
-└── setup_github.sh          Helper for pushing this repo to GitHub
 ```
 
 ## Current Features
@@ -98,29 +90,30 @@ The OTA updater verifies file size and SHA-256 values from the manifest before m
 
 ### Recommended
 
-Update the OTA metadata and README, then use the helper script to validate the release files, build the artifacts, and publish only the OTA-required files plus this update guide:
+Use the helper script to validate the release files, build the artifacts, and publish the minimum OTA runtime set that the device actually needs:
 
 ```bash
 scripts/ota_release.sh --version X.Y.Z
 ```
 
-The helper updates the current README and OTA version metadata, verifies they are aligned, and refuses to copy OTA artifacts into `releases/latest/` or push GitHub state until those release files are ready.
-On a successful scripted release, it also stages and commits the release changes automatically with a generated commit message.
+The helper temporarily updates the firmware and web-app version metadata required to build the release, verifies the generated artifacts, restores the source-tree metadata locally, prunes the OTA publish branch to the allowed root entries, syncs `.gitignore`, `CMakeLists.txt`, `LICENSE`, and `README.md`, and then publishes these OTA runtime files to `releases/latest/`:
+
+- `firmware.bin`
+- `littlefs.bin`
+- `manifest.json`
+
+On a successful scripted release, it stages the resulting OTA branch snapshot and commits the whitelist-enforced layout with a generated commit message. If you run it from the source checkout itself, the script publishes through a temporary checkout of `origin/main` instead of requiring your local source branch to match the OTA branch layout.
 
 ### Manual
 
-1. Bump the firmware version in `CMakeLists.txt`.
-2. Bump the PWA version in `data/manifest.json`.
-3. Update the service worker version tokens in the HTML pages under `data/`.
-4. Update `README.md` so the repo describes the new release before publishing it.
-5. Build firmware with `pio run`.
-6. Build LittleFS with `pio run -t buildfs`.
-7. Copy the resulting `firmware.bin` and `littlefs.bin` into both:
-   - `releases/latest/`
-   - `releases/vX.Y.Z/`
-8. Update both manifests with the correct version, sizes, and SHA-256 hashes.
-9. Verify OTA update checks against `releases/latest/manifest.json`.
-10. Commit and push the updated README and release artifacts together.
+1. Temporarily bump the firmware version in `CMakeLists.txt`.
+2. Temporarily bump the PWA version in `data/manifest.json` and the web asset version tokens under `data/`.
+3. Build firmware with `pio run`.
+4. Build LittleFS with `pio run -t buildfs`.
+5. Copy the resulting `firmware.bin` and `littlefs.bin` into `releases/latest/`.
+6. Generate `releases/latest/manifest.json` with the correct version, sizes, and SHA-256 hashes.
+7. Verify OTA update checks against `releases/latest/manifest.json`.
+8. Commit and push the updated `releases/latest/` files.
 
 ## GitHub Publishing
 

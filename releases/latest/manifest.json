@@ -1,6 +1,6 @@
 {
-  "version": "3.0.10",
-  "description": "Release 3.0.10",
+  "version": "3.0.11",
+  "description": "Release 3.0.11",
   "firmware": "firmware.bin",
   "littlefs": "littlefs.bin",
   "secure_version": 0,
@@ -8,12 +8,12 @@
     "firmware": {
       "path": "firmware.bin",
       "size": 1215860,
-      "sha256": "a10b6d31d4bad9e5b2778333231b3da39be9d36756b527d30c2495325f6376d1"
+      "sha256": "a1c7f77fe89c9f786426a87a51b85d9ca11e7fe851771f14a27e5987d9a3cd51"
     },
     "littlefs": {
       "path": "littlefs.bin",
       "size": 458752,
-      "sha256": "727b99243c887039268bd703522f033435b4c688478ec18bf224e73a35a20c9f"
+      "sha256": "90f8364d43f5aa1d8f974c31afb096fc86443647b95521b22180e19ff6934e4f"
     }
   }
 }
