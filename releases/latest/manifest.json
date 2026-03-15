@@ -13,7 +13,7 @@
     "littlefs": {
       "path": "littlefs.bin",
       "size": 458752,
-      "sha256": "90f8364d43f5aa1d8f974c31afb096fc86443647b95521b22180e19ff6934e4f"
+      "sha256": "f8ef9d0a18f6e877ea449397c2d7f403c369d7a1a71811be571c50c4f82d6671"
     }
   }
 }
