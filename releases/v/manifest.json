@@ -1,6 +1,0 @@
-{
-  "version": "",
-  "description": "Release ",
-  "firmware": "firmware.bin",
-  "littlefs": "littlefs.bin"
-}
