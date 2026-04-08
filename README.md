@@ -1,4 +1,4 @@
-# SC_WM OTA Firmware Repository
+# OSSC OTA Firmware Repository
 
 This repository is published as a OTA branch for the OSSC smoker controller.
 
