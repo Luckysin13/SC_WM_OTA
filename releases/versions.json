@@ -1,22 +1,16 @@
 {
-  "generated_at": "2026-04-09T18:20:17Z",
+  "generated_at": "2026-04-09T18:20:55Z",
   "versions": [
+    {
+      "version": "5.0.20",
+      "description": "Release 5.0.20",
+      "manifest": "releases/v5.0.20/manifest.json",
+      "secure_version": 0
+    },
     {
       "version": "5.0.19",
       "description": "Release 5.0.19",
       "manifest": "releases/v5.0.19/manifest.json",
-      "secure_version": 0
-    },
-    {
-      "version": "5.0.18",
-      "description": "Release 5.0.18",
-      "manifest": "releases/v5.0.18/manifest.json",
-      "secure_version": 0
-    },
-    {
-      "version": "5.0.17",
-      "description": "Release 5.0.17",
-      "manifest": "releases/v5.0.17/manifest.json",
       "secure_version": 0
     }
   ]

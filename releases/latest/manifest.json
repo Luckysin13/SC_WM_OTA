@@ -1,6 +1,6 @@
 {
-  "version": "5.0.19",
-  "description": "Release 5.0.19",
+  "version": "5.0.20",
+  "description": "Release 5.0.20",
   "firmware": "firmware.bin",
   "littlefs": "littlefs.bin",
   "secure_version": 0,
@@ -8,7 +8,7 @@
     "firmware": {
       "path": "firmware.bin",
       "size": 1310708,
-      "sha256": "96233369698161b8c9684532ddfea5eadd22023b77ae38452bf1e65c91494eb4"
+      "sha256": "cb4f9084c54df16cdf51ef51b350f7cb5e165a11602fd2cc7e0f6f5ed6151b14"
     },
     "littlefs": {
       "path": "littlefs.bin",
