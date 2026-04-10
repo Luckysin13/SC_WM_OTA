@@ -1,6 +1,12 @@
 {
-  "generated_at": "2026-04-09T18:20:55Z",
+  "generated_at": "2026-04-10T01:15:12Z",
   "versions": [
+    {
+      "version": "5.0.21",
+      "description": "Release 5.0.21",
+      "manifest": "releases/v5.0.21/manifest.json",
+      "secure_version": 0
+    },
     {
       "version": "5.0.20",
       "description": "Release 5.0.20",
